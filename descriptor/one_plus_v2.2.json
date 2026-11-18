@@ -1,0 +1,276 @@
+{
+  "aiready_descriptor": 1,
+  "identity": {
+    "board": "FYSETC One+ V2.2",
+    "aka": ["AIO", "AIO_I", "AIO v1", "ledsandchips LC-711"],
+    "not_to_confuse_with": "FYSETC AIO II (STM32) - nothing from it applies",
+    "origin": "3D-printer all-in-one controller, RAMPS 1.4 compatible (Arduino Mega 2560 + RAMPS on one PCB)",
+    "profile": "cnc-poc-1",
+    "profile_description": "Treat as a generalised CNC / motion controller, not a 3D printer. Heater, bed and fan outputs are unused and must stay off. TEMP0 thermistor is attached to the X stepper driver chip, TEMP1 thermistor to the X stepper motor, to monitor the effect of the X current setting.",
+    "descriptor_rev": "2026-11-18",
+    "human_docs": ["docs/hardware.md", "docs/verification.md", "docs/protocol.md"],
+    "tools": {"repo": "https://github.com/laurencecrew/aiready_poc", "install": "pip install mcp git+https://github.com/laurencecrew/aiready_poc#subdirectory=host", "cli": "python -m aiready discover|describe [section]|state|flash <hex>", "mcp": "python -m aiready.mcp_server (stdio)"}
+  },
+  "status_tags": {
+    "V": "verified on this physical board",
+    "R": "RAMPS 1.4 standard, consistent with tests but not individually confirmed",
+    "F": "confirmed from vendor firmware disassembly, not exercised electrically",
+    "?": "unknown or guessed - verify before relying on it"
+  },
+  "mcu": {
+    "part": "ATmega2560", "arch": "AVR8", "signature": "1E9801", "clock_hz": 16000000, "crystal": "external 16 MHz",
+    "flash_bytes": 262144, "app_max_bytes": 237568, "app_wdt_safe_max_bytes": 131072, "sram_bytes": 8192, "eeprom_bytes": 4096,
+    "fuses": {"low": "FF", "high": "D8", "ext": "FD", "meaning": "full-swing crystal, BOOTRST, 4K-word boot section, JTAG off, SPIEN, BOD 2.7 V"},
+    "logic_v": 5, "gpio_ma_continuous": 20, "gpio_ma_abs_max": 40,
+    "adc": {"bits": 10, "ref": "AVCC 5 V (rail not measured)", "status": "V"},
+    "s": "V"
+  },
+  "memory_map": [
+    {"start": "0x00000", "end": "0x1FFFF", "use": "application; keep code below 0x20000 or watchdog resets break (bootloader jumps to 0x20000 after a WDT reset)"},
+    {"start": "0x20000", "end": "0x39FFF", "use": "application overflow (watchdog-unsafe), else blank 0xFF"},
+    {"start": "0x3A000", "end": "0x3BFFF", "use": "aiready descriptor block (this data); starts with jmp 0x3E000 landing pad. Survives normal uploads"},
+    {"start": "0x3C000", "end": "0x3DFFF", "use": "0x00 NOP fill. The bootloader never erases pages >= 0x3C000, so this region is not reusable"},
+    {"start": "0x3E000", "end": "0x3FFFF", "use": "STK500v2 bootloader (boot section). Never write"}
+  ],
+  "programming": {
+    "bootloader": "Arduino explorer stk500V2 by MLS (classic Mega2560), 115200 baud, ~1.24 s window after reset",
+    "upload": "USB via bootloader; no ISP needed",
+    "avrdude": {"required_version": "6.3", "broken_versions": "8.x (does not sync)", "args": "-c wiring -p m2560 -b 115200 -D"},
+    "platformio": {
+      "board": "megaatmega2560", "framework": "arduino", "upload_speed": 115200,
+      "platform_packages": "platformio/tool-avrdude@~1.60300.0",
+      "board_upload.maximum_size": 237568,
+      "build_dir_note": "keep build_dir off Google Drive: ${sysenv.LOCALAPPDATA}/pio-build/<name>"
+    },
+    "quirks": [
+      "The bootloader does not erase the page it writes: it erases pages in order from 0x0000, one per page written in that session, and never at or above 0x3C000. Only write contiguous images starting at 0x0000 (aiready flash does this). A partial write elsewhere erases the start of the app.",
+      "After a watchdog reset the bootloader jumps to 0x20000 (EIND=1 bug); blank flash slides into the bootloader, which then starts the app normally after ~1.24 s.",
+      "Images containing the bytes '!!!' can hang the upload (old STK500v2 monitor trigger). Avoid in string literals.",
+      "Bootloader clears MCUSR: apps always see 0. Use a .noinit 32-bit magic for reset cause.",
+      "Watchdog works, no boot loop.",
+      "Arduino IDE 2.x ships avrdude 8 and fails; use PlatformIO or the aiready tool."
+    ],
+    "readback": "Flash and EEPROM can be read back through the bootloader (aiready readback)",
+    "tool": "host/aiready: 'aiready flash <hex>' backs up, strips protected regions, uploads, verifies",
+    "s": "V"
+  },
+  "host_link": {
+    "usb_serial": "CH340G", "vid_pid": "1A86:7523", "uart": "UART0 (D0 RX, D1 TX)", "typical_port": "COM5",
+    "dtr_resets_mcu": true,
+    "open_without_reset": "Open with DTR and RTS disabled, and close with both disabled in the saved port config (rewrite the DCB, e.g. re-apply the baud rate). Otherwise the next DTR-disabled open can make a short DTR pulse that hangs the MCU until a proper reset. host/aiready does this.",
+    "bootloader_window_rule": "Any byte received during the ~1.24 s bootloader window keeps the bootloader resident: wait for the app banner before sending.",
+    "runtime_baud": 115200,
+    "runtime_protocol": "Send '@ai <cmd>' lines; runtime answers with one JSON line. Commands: id, desc <off> <len>, state, watch <ms>, pins, peek <addr> <n>, safe, clear, help. Boot banner is a JSON line starting {\"aiready\":",
+    "s": "V"
+  },
+  "pins": [
+    {"pin": 54, "name": "X_STEP", "port": "PF0", "alt": "A0", "dir": "out", "s": "V"},
+    {"pin": 55, "name": "X_DIR", "port": "PF1", "alt": "A1", "dir": "out", "s": "V"},
+    {"pin": 38, "name": "X_ENABLE", "port": "PD7", "dir": "out", "active": "low", "note": "external pull-up", "s": "V"},
+    {"pin": 60, "name": "Y_STEP", "port": "PF6", "alt": "A6", "dir": "out", "s": "V"},
+    {"pin": 61, "name": "Y_DIR", "port": "PF7", "alt": "A7", "dir": "out", "s": "V"},
+    {"pin": 56, "name": "Y_ENABLE", "port": "PF2", "alt": "A2", "dir": "out", "active": "low", "s": "V"},
+    {"pin": 46, "name": "Z_STEP", "port": "PL3", "alt": "OC5A", "dir": "out", "note": "hardware step generation possible with Timer5", "s": "V"},
+    {"pin": 48, "name": "Z_DIR", "port": "PL1", "dir": "out", "s": "V"},
+    {"pin": 62, "name": "Z_ENABLE", "port": "PK0", "alt": "A8 PCINT16", "dir": "out", "active": "low", "s": "V"},
+    {"pin": 26, "name": "E0_STEP", "port": "PA4", "dir": "out", "s": "V"},
+    {"pin": 28, "name": "E0_DIR", "port": "PA6", "dir": "out", "s": "V"},
+    {"pin": 24, "name": "E0_ENABLE", "port": "PA2", "dir": "out", "active": "low", "s": "V"},
+    {"pin": 3, "name": "X_MIN", "port": "PE5", "alt": "INT5 OC3C", "dir": "in", "active": "low", "s": "V"},
+    {"pin": 2, "name": "X_MAX", "port": "PE4", "alt": "INT4 OC3B", "dir": "in", "active": "low", "s": "V"},
+    {"pin": 40, "name": "Y_MIN", "port": "PG1", "dir": "in", "active": "low", "note": "NOT RAMPS D14; no interrupt, poll", "s": "V"},
+    {"pin": 41, "name": "Y_MAX", "port": "PG0", "dir": "in", "active": "low", "note": "NOT RAMPS D15; no interrupt, poll", "s": "V"},
+    {"pin": 18, "name": "Z_MIN", "port": "PD3", "alt": "INT3 TXD1", "dir": "in", "active": "low", "s": "V"},
+    {"pin": 19, "name": "Z_MAX", "port": "PD2", "alt": "INT2 RXD1", "dir": "in", "active": "low", "s": "V"},
+    {"pin": 10, "name": "HEATER_0", "port": "PB4", "alt": "OC2A Timer2", "dir": "out", "note": "MOSFET gate. Profile: unused, keep LOW", "s": "V"},
+    {"pin": 8, "name": "HEATER_BED", "port": "PH5", "alt": "OC4C Timer4", "dir": "out", "note": "MOSFET gate <=10 A. Profile: unused, keep LOW", "s": "V"},
+    {"pin": 9, "name": "FAN", "port": "PH6", "alt": "OC2B Timer2", "dir": "out", "note": "MOSFET gate, PWM. Profile: unused, keep LOW", "s": "V"},
+    {"pin": 67, "name": "TEMP0", "port": "PK5", "alt": "A13 ADC13 PCINT21", "dir": "analog", "note": "profile: X driver chip thermistor", "s": "V"},
+    {"pin": 68, "name": "TEMP1", "port": "PK6", "alt": "A14 ADC14 PCINT22", "dir": "analog", "note": "board label TEMP1/bed; profile: X motor thermistor", "s": "V"},
+    {"pin": 69, "name": "A15", "port": "PK7", "alt": "ADC15", "dir": "unused", "note": "floating, not a populated input", "s": "V"},
+    {"pin": 29, "name": "LCD_CS", "port": "PA7", "dir": "out", "active": "low", "s": "V"},
+    {"pin": 27, "name": "LCD_A0", "port": "PA5", "dir": "out", "note": "LOW command, HIGH data", "s": "V"},
+    {"pin": 25, "name": "LCD_RESET", "port": "PA3", "dir": "out", "active": "low", "s": "V"},
+    {"pin": 65, "name": "LCD_AUX65", "port": "PK3", "alt": "A11", "dir": "out", "note": "Marlin drove HIGH as backlight; effect unknown", "s": "?"},
+    {"pin": 31, "name": "ENC_A", "port": "PC6", "dir": "in", "note": "external pull-up; port C has no interrupts, poll >=1 kHz", "s": "V"},
+    {"pin": 33, "name": "ENC_B", "port": "PC4", "dir": "in", "s": "V"},
+    {"pin": 35, "name": "ENC_BTN", "port": "PC2", "dir": "in", "active": "low", "s": "V"},
+    {"pin": 37, "name": "BEEPER", "port": "PC0", "dir": "out", "note": "active buzzer, HIGH = sound; no PWM; never tone()", "s": "V"},
+    {"pin": 50, "name": "SPI_MISO", "port": "PB3", "alt": "PCINT3", "dir": "in", "s": "R"},
+    {"pin": 51, "name": "SPI_MOSI", "port": "PB2", "alt": "PCINT2", "dir": "out", "note": "shared LCD + SD", "s": "V"},
+    {"pin": 52, "name": "SPI_SCK", "port": "PB1", "alt": "PCINT1", "dir": "out", "note": "shared LCD + SD", "s": "V"},
+    {"pin": 53, "name": "SD_CS", "port": "PB0", "alt": "SS PCINT0", "dir": "out", "note": "must stay OUTPUT for SPI master", "s": "R"},
+    {"pin": 49, "name": "SD_DETECT", "port": "PL0", "dir": "in", "active": "low", "note": "pulled up; LOW = card present", "s": "R"},
+    {"pin": 20, "name": "I2C_SDA", "port": "PD1", "alt": "INT1", "dir": "io", "note": "external pull-ups, 5 V logic", "s": "V"},
+    {"pin": 21, "name": "I2C_SCL", "port": "PD0", "alt": "INT0", "dir": "io", "s": "V"},
+    {"pin": 0, "name": "USB_RX", "port": "PE0", "dir": "in", "note": "UART0 to CH340G, reserved", "s": "V"},
+    {"pin": 1, "name": "USB_TX", "port": "PE1", "dir": "out", "note": "UART0 to CH340G, reserved", "s": "V"},
+    {"pin": 13, "name": "LED?", "port": "PB7", "alt": "OC0A OC1C", "dir": "unknown", "note": "held LOW with pull-up; maybe on-board LED", "s": "?"},
+    {"pin": 4, "name": "UNKNOWN_D4", "port": "PG5", "alt": "OC0B", "dir": "do_not_drive", "note": "external load/pull-down; do not drive HIGH until traced", "s": "?"},
+    {"pin": 6, "name": "UNKNOWN_D6", "port": "PH3", "alt": "OC4A", "dir": "do_not_drive", "note": "external load/pull-down; do not drive HIGH until traced", "s": "?"},
+    {"pin": 7, "name": "UNKNOWN_D7", "port": "PH4", "alt": "OC4B", "dir": "do_not_drive", "note": "external load/pull-down; do not drive HIGH until traced", "s": "?"},
+    {"pin": 12, "name": "PS_ON?", "port": "PB6", "dir": "unknown", "note": "RAMPS PS_ON, not probed", "s": "?"},
+    {"pin": 14, "name": "UART3_TX", "port": "PJ1", "alt": "TXD3 PCINT10", "dir": "free", "note": "candidate ESP-01 UART", "s": "?"},
+    {"pin": 15, "name": "UART3_RX", "port": "PJ0", "alt": "RXD3 PCINT9", "dir": "free", "note": "external pull-up; candidate ESP-01 UART", "s": "?"},
+    {"pin": 16, "name": "UART2_TX", "port": "PH1", "alt": "TXD2", "dir": "free", "note": "candidate ESP-01 UART; not used by display", "s": "?"},
+    {"pin": 17, "name": "UART2_RX", "port": "PH0", "alt": "RXD2", "dir": "free", "note": "candidate ESP-01 UART", "s": "?"}
+  ],
+  "peripherals": {
+    "steppers": {
+      "count": 4, "axes": ["X", "Y", "Z", "E0"],
+      "driver": "Allegro A4988 (marked 4988ET, 28-pin QFN, soldered)",
+      "microstep": 16, "microstep_configurable": "unknown (MS pins not traced)",
+      "steps_per_rev_1_8deg": 3200,
+      "timing": {"step_min_high_us": 1, "step_min_low_us": 1, "dir_setup_ns": 200, "practical_max_step_hz": 40000},
+      "motor_supply": "Vin (12/24 V); A4988 8-35 V",
+      "current": {
+        "set_by": "hardware trimpot only; firmware cannot change it",
+        "sense_resistor_ohm": 0.05,
+        "formula": "Itrip = Vref / 0.4  (Vref = 0.4 x I); measure Vref on pot wiper vs GND",
+        "max_a": 2.0, "practical_a_no_heatsink": 1.0,
+        "trimpots": [
+          {"near": "E0"}, {"near": "Y"}, {"near": "Z"},
+          {"near": "X", "present": false, "note": "X has no pot; probably shares Y pot (same current as Y)", "s": "?"}
+        ],
+        "present_vref": "not measured", "s": "V"
+      },
+      "monitoring": "X axis: TEMP0 = driver chip temperature, TEMP1 = motor temperature (profile cnc-poc-1)",
+      "s": "V"
+    },
+    "endstops": {
+      "count": 6, "names": ["X_MIN", "X_MAX", "Y_MIN", "Y_MAX", "Z_MIN", "Z_MAX"],
+      "connector": "S + GND (+5 V needs jumper/solder change for optical)",
+      "pullups": "external on all six", "triggered_level": "LOW for NO switch to GND",
+      "interrupts": {"X_MIN": "INT5", "X_MAX": "INT4", "Z_MIN": "INT3", "Z_MAX": "INT2", "Y_MIN": "none (poll)", "Y_MAX": "none (poll)"},
+      "reuse": "X and Z inputs suit counters, encoders, tachometers (hardware INT)",
+      "s": "V"
+    },
+    "power_outputs": {
+      "type": "N-MOSFET low side, load voltage = Vin",
+      "outputs": [
+        {"name": "HEATER", "pin": 10, "timer": "Timer2 OC2A", "rating": "240 W (store page)"},
+        {"name": "BED", "pin": 8, "timer": "Timer4 OC4C", "rating": "10 A / 240 W (store page)"},
+        {"name": "FAN", "pin": 9, "timer": "Timer2 OC2B", "rating": "unknown", "pwm": "works"}
+      ],
+      "profile_state": "unused and forced LOW in cnc-poc-1",
+      "mosfet_part": "unknown", "fuses": "unknown",
+      "rules": "OUTPUT LOW first in setup(); never INPUT_PULLUP; any heating needs thermistor fault detection + runaway/max-on cutoff",
+      "s": "V"
+    },
+    "thermistors": {
+      "circuit": "4.7k pull-up to 5 V, NTC to GND, ~10 uF filter (RAMPS standard)", "circuit_s": "R",
+      "model": "100k NTC, B=3950 assumed (reads ~28 C at room temp)", "model_s": "R",
+      "formula": "R = 4700*adc/(1023-adc); T = 1/(1/298.15 + ln(R/100000)/3950) - 273.15",
+      "faults": "adc >= 1015 open, adc <= 5 short",
+      "channels": [
+        {"label": "TEMP0", "adc": 13, "attached_to": "X stepper driver chip (A4988)", "state_key": "x_driver"},
+        {"label": "TEMP1", "adc": 14, "attached_to": "X stepper motor body", "state_key": "x_motor"}
+      ],
+      "thermal_guard": {
+        "x_driver_max_c": 85, "x_motor_max_c": 75,
+        "action": "X driver disabled (ENABLE HIGH), fault latched until '@ai clear' or app call",
+        "sensor_fault_action": "same as over-temperature",
+        "where": "aiready runtime (firmware/lib/aiready), constants AI_GUARD_*",
+        "note": "A4988 thermal shutdown ~165 C junction; package surface reads lower than junction"
+      },
+      "s": "V"
+    },
+    "display": {
+      "type": "2.4 in 128x64 monochrome graphic LCD",
+      "controller": "ST7565/UC1701 family", "bus": "hardware SPI mode 0, <=4 MHz, shared with SD",
+      "pins": {"cs": 29, "a0": 27, "reset": 25, "mosi": 51, "sck": 52},
+      "not": "NOT the RAMPS ST7920 wiring (D16/D17/D23 unused)",
+      "u8g2": {
+        "constructor": "U8G2_ST7565_ZOLEN_128X64_{F|1|2}_4W_HW_SPI(U8G2_R0, 29, 27, 25)",
+        "after_every_begin": ["sendF(\"c\", 0xA0)", "getU8x8()->x_offset = 0", "setContrast(56)"],
+        "why": "without 0xA0 the image is mirrored and wraps",
+        "contrast_good": [40, 70],
+        "failed_constructors": ["UC1701_MINI12864", "ST7565_64128N", "ST7565_EA_DOGM128"],
+        "hal": "aiready_display.h: aiDisplayBegin(u8g2)"
+      },
+      "s": "V"
+    },
+    "encoder": {"type": "rotary encoder with push switch", "pins": {"a": 31, "b": 33, "push": 35}, "interrupts": "none (port C): poll >=1 kHz", "hal": "AiEncoder (TIMER0_COMPA ISR at ~1 kHz)", "s": "V"},
+    "beeper": {"pin": 37, "type": "active buzzer, HIGH = sound", "hal": "aiBeep(ms)", "s": "V"},
+    "reset_button": {"type": "hardware MCU RESET, not readable", "note": "there is no KILL button", "s": "V"},
+    "sd_card": {"type": "microSD (TF) vertical slot", "bus": "hardware SPI", "cs": 53, "detect": 49, "level_shifting": "unknown", "s": "R"},
+    "i2c": {"header_order": "SCL, SDA, GND, 5V (left to right)", "pins": {"sda": 20, "scl": 21}, "pullups": "external, value unknown", "logic": "5 V", "onboard_devices": "none", "s": "V"},
+    "esp01_socket": {"type": "2x4 ESP-01 (ESP8266) socket", "uart": "unknown: Serial2 (D16/D17) or Serial3 (D14/D15) likely", "supply_3v3": "unknown", "s": "?"}
+  },
+  "buses": {
+    "uart": [
+      {"id": "Serial", "pins": "D0 RX / D1 TX", "use": "USB host link (reserved)"},
+      {"id": "Serial1", "pins": "D18 TX / D19 RX", "use": "conflicts with Z endstops"},
+      {"id": "Serial2", "pins": "D16 TX / D17 RX", "use": "free (ESP-01 candidate)", "s": "?"},
+      {"id": "Serial3", "pins": "D14 TX / D15 RX", "use": "free (ESP-01 candidate)", "s": "?"}
+    ],
+    "spi": {"pins": "MISO 50, MOSI 51, SCK 52", "devices": ["LCD CS 29", "SD CS 53"], "rule": "one context only; deselect the other device"},
+    "i2c": {"pins": "SDA 20, SCL 21", "speed": "100/400 kHz (AVR TWI)"}
+  },
+  "resources": {
+    "timers": [
+      {"id": "Timer0", "bits": 8, "use": "millis/delay; COMPA used by aiready encoder poll", "pins": "D4 OC0B, D13 OC0A", "rule": "leave alone"},
+      {"id": "Timer1", "bits": 16, "use": "free", "pins": "D11, D12, D13", "rule": "recommended for motion/step ISR"},
+      {"id": "Timer2", "bits": 8, "use": "heater/fan PWM", "pins": "D9, D10", "rule": "never tone()"},
+      {"id": "Timer3", "bits": 16, "use": "free", "pins": "D2, D3, D5"},
+      {"id": "Timer4", "bits": 16, "use": "bed PWM", "pins": "D6, D7, D8"},
+      {"id": "Timer5", "bits": 16, "use": "free (Servo lib uses it)", "pins": "D44, D45, D46 Z_STEP", "rule": "can generate Z steps in hardware"}
+    ],
+    "external_interrupts": {"INT0": "D21 SCL", "INT1": "D20 SDA", "INT2": "D19 Z_MAX", "INT3": "D18 Z_MIN", "INT4": "D2 X_MAX", "INT5": "D3 X_MIN"},
+    "pin_change": "port B (D50-53, D10-13), PCINT8-10 (D0, D15, D14), port K (A8-A15)",
+    "no_interrupts": "ports A, C (encoder), F, G (Y endstops), L",
+    "fast_paths": ["X_STEP and Y_STEP both on PORTF: pulse together with one write"]
+  },
+  "user_config": [
+    {"item": "stepper current trimpots (3)", "effect": "set A4988 current limit, Vref = 0.4 x I", "firmware_visible": false},
+    {"item": "endstop 5 V option", "effect": "jumper/solder change to provide 5 V for optical endstops", "s": "?"},
+    {"item": "ESP-01 module socket", "effect": "adds WiFi over a UART", "s": "?"},
+    {"item": "microSD card", "effect": "storage; detect on D49"},
+    {"item": "thermistor placement (profile)", "effect": "TEMP0 on X driver, TEMP1 on X motor"}
+  ],
+  "limits": {
+    "vin_v": [12, 24],
+    "mcu_powered_from_usb_alone": "logic works; motors and outputs need Vin",
+    "stepper_current_a_max": 2.0,
+    "stepper_step_rate_hz_practical": 40000,
+    "gpio_ma": 20,
+    "rail_5v_capacity": "unknown", "rail_3v3": "unknown",
+    "cooling": "no heatsinks/fan on drivers assumed; ~1 A RMS practical"
+  },
+  "safety_rules": [
+    {"id": "S1", "rule": "First lines of setup(): D10, D8, D9 OUTPUT LOW; ENABLE 38, 56, 62, 24 OUTPUT HIGH. aiSafeInit() does this."},
+    {"id": "S2", "rule": "Never set MOSFET gate pins (8, 9, 10) to INPUT_PULLUP."},
+    {"id": "S3", "rule": "Any heater control must include thermistor open/short detection and thermal-runaway / max-on-time cutoff."},
+    {"id": "S4", "rule": "Do not drive D4, D6, D7 HIGH until identified."},
+    {"id": "S5", "rule": "No tone(): it takes Timer2 (heater/fan PWM)."},
+    {"id": "S6", "rule": "Never write flash at or above 0x3A000 from an app (descriptor, NOP fill, bootloader). Keep app code below 0x20000."},
+    {"id": "S7", "rule": "Avoid the byte sequence '!!!' in firmware images."},
+    {"id": "S8", "rule": "Keep the X thermal guard enabled while X is energised (profile cnc-poc-1)."}
+  ],
+  "unknowns": [
+    "Which trimpot sets X current (shared with Y?) and present Vref values",
+    "ESP-01 UART and its 3.3 V supply",
+    "What D4, D6, D7 connect to",
+    "D13 LED presence",
+    "MOSFET and fuse ratings; 5 V regulator capacity",
+    "Thermistor model (B value) - assumed 100k B3950"
+  ],
+  "hal": {
+    "library": "firmware/lib/aiready (PlatformIO: lib_extra_dirs = ../lib, build_flags = -I../include)",
+    "template_project": "firmware/aiready_base",
+    "pin_header": "firmware/include/one_plus_pins.h",
+    "api": [
+      "aiSafeInit()  - call first in setup(); safe state + reset-cause",
+      "AiReady.begin(\"name\", \"version\")  - banner + runtime; AiReady.poll() every loop()",
+      "AiReady.onLine(cb)  - receive serial lines that are not '@ai' commands",
+      "aiTempC(ch) / aiTempRead(ch, &t)  - thermistor C with fault code; ch AI_T_X_DRIVER / AI_T_X_MOTOR",
+      "aiEndstop(i) / aiEndstopMask()  - debounced, 1 = triggered",
+      "AiEncoder::begin(), position(), button()  - polled at 1 kHz",
+      "aiStepperEnable(axis, on), aiStepperMove(axis, steps, steps_per_s, stop_on_endstop)  - blocking; refuses X while guard tripped",
+      "aiBeep(ms)",
+      "aiDisplayBegin(u8g2)  - aiready_display.h, needs olikraus/U8g2 in lib_deps",
+      "aiGuardTripped(), aiGuardClear(), aiGuardEnable(bool)"
+    ],
+    "serial_rule": "Apps share Serial with the runtime: do not consume lines starting '@ai'; use AiReady.onLine()."
+  }
+}

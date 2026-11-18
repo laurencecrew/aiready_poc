@@ -1,0 +1,15 @@
+# PlatformIO
+.pio/
+.vscode/
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+build/
+# Generated / local machine data
+descriptor/build/
+backups/
+# Firmware dumps read from the board (original vendor Marlin binary + EEPROM)
+firmware/backup/
+# Local Claude Code settings
+.claude/

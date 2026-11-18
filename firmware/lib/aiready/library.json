@@ -1,0 +1,8 @@
+{
+  "name": "aiready",
+  "version": "0.1.0",
+  "description": "AI-ready runtime + thin HAL for the FYSETC One+ V2.2: safe state, self-description over serial (@ai protocol), live state, thermistors, thermal guard, endstops, encoder, steppers, beeper, display helper.",
+  "frameworks": "arduino",
+  "platforms": "atmelavr",
+  "build": { "libArchive": false }
+}

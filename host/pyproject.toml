@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiready"
+version = "0.1.0"
+description = "Host tools for AI-ready hardware: discover, describe, flash, read back and inspect a self-describing board"
+requires-python = ">=3.10"
+dependencies = ["pyserial>=3.5"]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+test = ["pytest"]
+
+[project.scripts]
+aiready = "aiready.cli:main"
+aiready-mcp = "aiready.mcp_server:main"
+
+[tool.setuptools]
+packages = ["aiready"]

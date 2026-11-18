@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aiready-descriptor-v1",
+  "title": "AI-ready hardware self-description, format 1",
+  "description": "Board-agnostic structure. Board-specific detail goes inside peripherals/buses/resources as free-form objects. Any object may carry 's' (status tag: V, R, F or ?) and 'note'.",
+  "type": "object",
+  "required": ["aiready_descriptor", "identity", "status_tags", "mcu", "memory_map", "programming", "host_link", "pins", "peripherals", "limits", "safety_rules", "unknowns"],
+  "properties": {
+    "aiready_descriptor": {"const": 1},
+    "identity": {
+      "type": "object",
+      "required": ["board", "profile", "descriptor_rev"],
+      "properties": {
+        "board": {"type": "string"},
+        "profile": {"type": "string", "description": "Use-case profile the board is currently configured for"},
+        "profile_description": {"type": "string"},
+        "descriptor_rev": {"type": "string"}
+      }
+    },
+    "status_tags": {"type": "object", "additionalProperties": {"type": "string"}},
+    "mcu": {
+      "type": "object",
+      "required": ["part", "clock_hz", "flash_bytes", "sram_bytes"],
+      "properties": {
+        "part": {"type": "string"}, "clock_hz": {"type": "integer"},
+        "flash_bytes": {"type": "integer"}, "app_max_bytes": {"type": "integer"},
+        "sram_bytes": {"type": "integer"}, "eeprom_bytes": {"type": "integer"}
+      }
+    },
+    "memory_map": {
+      "type": "array",
+      "items": {"type": "object", "required": ["start", "end", "use"], "properties": {"start": {"type": "string"}, "end": {"type": "string"}, "use": {"type": "string"}}}
+    },
+    "programming": {"type": "object"},
+    "host_link": {"type": "object", "required": ["runtime_protocol"]},
+    "pins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pin", "name", "dir", "s"],
+        "properties": {
+          "pin": {"type": "integer", "description": "Framework pin number (Arduino Mega numbering here)"},
+          "name": {"type": "string"},
+          "port": {"type": "string"},
+          "alt": {"type": "string", "description": "Alternate functions: timers, interrupts, ADC"},
+          "dir": {"enum": ["in", "out", "io", "analog", "free", "unused", "unknown", "do_not_drive"]},
+          "active": {"enum": ["low", "high"]},
+          "note": {"type": "string"},
+          "s": {"$ref": "#/$defs/status"}
+        }
+      }
+    },
+    "peripherals": {"type": "object"},
+    "buses": {"type": "object"},
+    "resources": {"type": "object"},
+    "user_config": {"type": "array"},
+    "limits": {"type": "object"},
+    "safety_rules": {
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "rule"], "properties": {"id": {"type": "string"}, "rule": {"type": "string"}}}
+    },
+    "unknowns": {"type": "array", "items": {"type": "string"}},
+    "hal": {"type": "object"}
+  },
+  "$defs": {
+    "status": {"enum": ["V", "R", "F", "?"]}
+  }
+}
