@@ -78,4 +78,4 @@ print(descriptor["identity"])
 
 ## 4. When no runtime answers
 
-If the app is broken or lacks the runtime, the block can still be read through the STK500v2 bootloader: reset, `CMD_SIGN_ON`, `CMD_LOAD_ADDRESS` with the **word** address and bit 31 set (0x80000000 | 0x3A000/2), then `CMD_READ_FLASH_ISP` in 256-byte chunks. See [../host/aiready/stk500.py](../host/aiready/stk500.py). Never write through the bootloader except with contiguous images from 0x0000 ([hardware.md](hardware.md) §2.1).
+If the app is broken or lacks the runtime, the block can still be read through the STK500v2 bootloader: reset, `CMD_SIGN_ON`, `CMD_LOAD_ADDRESS` with the **word** address and bit 31 set (0x80000000 | 0x3A000/2), then `CMD_READ_FLASH_ISP` in 256-byte chunks. See [../host/aiready/stk500.py](../host/aiready/stk500.py). Never write through the bootloader except with contiguous images from 0x0000 (see the description's `programming.quirks`).

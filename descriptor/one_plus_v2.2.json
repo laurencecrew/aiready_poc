@@ -8,7 +8,7 @@
     "profile": "cnc-poc-1",
     "profile_description": "Treat as a generalised CNC / motion controller, not a 3D printer. Heater, bed and fan outputs are unused and must stay off. TEMP0 thermistor is attached to the X stepper driver chip, TEMP1 thermistor to the X stepper motor, to monitor the effect of the X current setting.",
     "descriptor_rev": "2026-11-18",
-    "human_docs": ["docs/hardware.md", "docs/verification.md", "docs/protocol.md"],
+    "human_docs": ["docs/protocol.md"],
     "tools": {"repo": "https://github.com/laurencecrew/aiready_poc", "install": "pip install mcp git+https://github.com/laurencecrew/aiready_poc#subdirectory=host", "cli": "python -m aiready discover|describe [section]|state|flash <hex>", "mcp": "python -m aiready.mcp_server (stdio)"}
   },
   "status_tags": {

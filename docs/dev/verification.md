@@ -1,7 +1,7 @@
 # Verification log and checklist
 
 How each fact in [hardware.md](hardware.md) was established, and what is still open.
-Tools: probe firmware in [../firmware/probe/](../firmware/probe/) (serial console, 115200 baud, type `help`).
+Tools: probe firmware in [../../firmware/probe/](../../firmware/probe/) (serial console, 115200 baud, type `help`).
 
 ## How to run the probe
 

@@ -6,12 +6,12 @@
  * the original Marlin 1.1.0-RC6 binary and on-board probe tests. The display is
  * NOT the RRD ST7920 wiring — see LCD section.
  *
- * Status tags (keep in sync with docs/hardware.md):
+ * Status tags (keep in sync with docs/dev/hardware.md):
  *   [V]  verified on this physical board
  *   [R]  RAMPS 1.4 standard, assumed, not yet verified on this board
  *   [?]  unknown / guess — verify before relying on it
  *
- * See docs/hardware.md for port/timer/interrupt details and conflicts.
+ * See docs/dev/hardware.md for port/timer/interrupt details and conflicts.
  */
 #pragma once
 

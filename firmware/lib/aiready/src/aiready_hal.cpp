@@ -50,7 +50,7 @@ void aiReboot() {
   ai_noinit_magic = AI_MAGIC_SOFT;
   // After a WDT reset the bootloader jumps to 0x20000 (EIND bug), slides through blank
   // flash and the descriptor block's landing pad into the bootloader, which then starts
-  // the app after its ~1.24 s window. Needs app code < 0x20000. See docs/hardware.md section 2.
+  // the app after its ~1.24 s window. Needs app code < 0x20000. See docs/dev/hardware.md section 2.
   wdt_enable(WDTO_1S);
   for (;;) {}
 }

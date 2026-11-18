@@ -23,7 +23,7 @@ If a board's serial banner or `@ai id` pointed you here:
 3. Or add the MCP server (stdio) to your client: command `python`, args `["-m", "aiready.mcp_server"]`. Tools: `discover`, `describe`, `get_state`, `watch`, `read_registers`, `peek`, `safe_state`, `clear_guard`, `flash`, `read_back`.
 4. No install possible? The serial protocol is plain JSON lines: see [docs/protocol.md](docs/protocol.md), which includes a 25-line reader.
 
-**Read `safety_rules` before writing firmware.** Flash only through `aiready flash`: this board's bootloader has erase bugs that a naive upload of a partial image will trip over ([docs/hardware.md](docs/hardware.md) §2.1).
+**Read `safety_rules` before writing firmware.** Flash only through `aiready flash`: this board's bootloader has erase bugs that a naive upload of a partial image will trip over (`describe programming.quirks`).
 
 ## Repository layout
 
@@ -35,7 +35,8 @@ If a board's serial banner or `@ai id` pointed you here:
 | `firmware/aiready_base/` | Factory image and template for new apps (PlatformIO) |
 | `firmware/include/one_plus_pins.h` | Pin map |
 | `firmware/probe/`, `firmware/lcdtest/` | Characterisation firmware used to verify the hardware |
-| `docs/` | Hardware reference, verification log, protocol |
+| `docs/protocol.md` | Serial protocol and description format (for use without the tools) |
+| `docs/dev/` | Maintainers' records: hardware reference, verification log (not needed to use the board) |
 
 ## Building firmware
 
@@ -51,4 +52,6 @@ Developing from a clone: `pip install -e "host[mcp,test]"`; the tools then use t
 
 ## Status
 
-Proof of concept. Verified on one board; see [docs/verification.md](docs/verification.md) for evidence and open checks. Values tagged `[?]` / `"s": "?"` are unverified.
+Proof of concept. Verified on one board. Values tagged `"s": "?"` in the description are unverified.
+
+The board and the tools are meant to be enough to work with the hardware. [docs/dev/](docs/dev/) holds the maintainers' records: the human hardware reference the description was written from ([hardware.md](docs/dev/hardware.md)) and the evidence log behind each status tag ([verification.md](docs/dev/verification.md)).

@@ -31,7 +31,7 @@ The bootloader and programming environment may be based on an existing framework
 
 ## Specific environment for the POC
 
-Selected due to availability but by no means optimised for this project, I have a 'FYSETC One+ V2.2' 3D printer controller available for the initial POC. See docs\hardware.md
+Selected due to availability but by no means optimised for this project, I have a 'FYSETC One+ V2.2' 3D printer controller available for the initial POC. See docs\dev\hardware.md
 
 The controller should be treated as a generalised CNC machine controller (not a 3D printer controller in this instance). The thermistors connected to Temp0 and Temp1 are to be attached to the X stepper driver chip and X stepper motor respectively to enable basic monitoring of the effect of the current setting.
 
@@ -55,6 +55,6 @@ Language and framework: C++ on Arduino/PlatformIO for firmware (the best-known e
 
 Lessons for real AI-ready hardware, from building this on a board that wasn't designed for it:
 - **The bootloader is the weakest link.** This one has three undocumented bugs: watchdog resets jump to 0x20000, pages are erased in sequence from 0 rather than at the target address, and nothing at or above 0x3C000 is ever erased. They were found only by disassembling it. A product should ship a bootloader that is documented, protects its own region, and has a native "describe" command.
-- **Host-side serial quirks matter as much as the firmware.** Opening the port the wrong way can hang the MCU (docs/hardware.md §2.2). Purpose-built hardware should not reset on port open, or should offer a separate debug channel.
+- **Host-side serial quirks matter as much as the firmware.** Opening the port the wrong way can hang the MCU (docs/dev/hardware.md §2.2). Purpose-built hardware should not reset on port open, or should offer a separate debug channel.
 - **The description must carry verification status** (V/R/F/? tags). Otherwise an agent can't tell measured facts from assumptions.
 - **8 KB is tight.** The compressed descriptor is 7.4 KB; a real product should reserve more, or store a full description on the host keyed by a hash the board reports.

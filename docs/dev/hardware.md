@@ -1,7 +1,7 @@
 # FYSETC One+ V2.2 (AIO v1) — Hardware Reference
 
 Machine-oriented reference for writing custom firmware for this board.
-Pin numbers are **Arduino Mega 2560 pin numbers** unless noted. A C header with the same map is at [../firmware/include/one_plus_pins.h](../firmware/include/one_plus_pins.h).
+Pin numbers are **Arduino Mega 2560 pin numbers** unless noted. A C header with the same map is at [../../firmware/include/one_plus_pins.h](../../firmware/include/one_plus_pins.h).
 
 **Status tags**:
 - **[V]** verified on this physical board (see [verification.md](verification.md))
