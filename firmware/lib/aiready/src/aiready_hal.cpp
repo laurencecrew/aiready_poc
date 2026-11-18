@@ -8,12 +8,15 @@
 #define AI_MAGIC_SOFT 0x5AFE2B07UL
 // volatile: aiReboot() never returns, so without it the compiler drops the store as dead.
 static volatile uint32_t ai_noinit_magic __attribute__((section(".noinit")));
-static const char *ai_reset_cause = "power_ext_or_wdt";
+// Optiboot passes MCUSR through to the app. Captured in .init3, before .bss/.data init
+// (.init4), so it must live in .noinit too.
+static volatile uint8_t ai_mcusr __attribute__((section(".noinit")));
+static const char *ai_reset_cause = "unknown";
 
-// Defensive: disable the WDT before constructors and init() (avr-libc .init3 idiom).
-// (This bootloader already disables it before entering the app.)
+// Save the reset flags, then disable the WDT before constructors and init() (.init3 idiom).
 extern "C" void ai_wdt_off_early(void) __attribute__((naked, used, section(".init3")));
 extern "C" void ai_wdt_off_early(void) {
+  ai_mcusr = MCUSR;
   MCUSR = 0;
   wdt_disable();
 }
@@ -40,19 +43,24 @@ void aiSafeInit() {
                         BTN_EN1, BTN_EN2, BTN_ENC, SD_DETECT_PIN};
   for (uint8_t p : in) pinMode(p, INPUT_PULLUP);
   // D4, D6, D7 deliberately left as inputs (unidentified external loads).
-  ai_reset_cause = (ai_noinit_magic == AI_MAGIC_SOFT) ? "soft" : "power_ext_or_wdt";
+  const uint8_t f = ai_mcusr;
+  if ((f & _BV(WDRF)) && ai_noinit_magic == AI_MAGIC_SOFT) ai_reset_cause = "soft";
+  else if (f & _BV(PORF))  ai_reset_cause = "power_on";
+  else if (f & _BV(BORF))  ai_reset_cause = "brownout";
+  else if (f & _BV(WDRF))  ai_reset_cause = "watchdog";
+  else if (f & _BV(EXTRF)) ai_reset_cause = "external";   // RESET button, DTR auto-reset, after an upload
+  else if (f & _BV(JTRF))  ai_reset_cause = "jtag";
   ai_noinit_magic = 0;
 }
 
 const char *aiResetCause() { return ai_reset_cause; }
+uint8_t aiResetFlags() { return ai_mcusr; }
 
 void aiReboot() {
   aiSafeOutputs();
   ai_noinit_magic = AI_MAGIC_SOFT;
-  // After a WDT reset the bootloader jumps to 0x20000 (EIND bug), slides through blank
-  // flash and the descriptor block's landing pad into the bootloader, which then starts
-  // the app after its ~1.24 s window. Needs app code < 0x20000. See docs/dev/hardware.md section 2.
-  wdt_enable(WDTO_1S);
+  // Optiboot sees WDRF without EXTRF and jumps straight to the app (no bootloader window).
+  wdt_enable(WDTO_15MS);
   for (;;) {}
 }
 

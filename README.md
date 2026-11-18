@@ -30,7 +30,7 @@ If a board's serial banner or `@ai id` pointed you here:
 | Path | Contents |
 |---|---|
 | `descriptor/` | Machine-readable self-description (`one_plus_v2.2.json`) and its format (`schema.json`) |
-| `host/aiready/` | Host package: CLI, MCP server, STK500v2 reader, avrdude wrapper. Tests: `python -m pytest host/tests` |
+| `host/aiready/` | Host package: CLI, MCP server, Optiboot (STK500v1) client, avrdude wrapper. Tests: `python -m pytest host/tests` |
 | `firmware/lib/aiready/` | Runtime (`@ai` protocol) + thin HAL library for apps |
 | `firmware/aiready_base/` | Factory image and template for new apps (PlatformIO) |
 | `firmware/include/one_plus_pins.h` | Pin map |
@@ -40,7 +40,7 @@ If a board's serial banner or `@ai id` pointed you here:
 
 ## Building firmware
 
-PlatformIO, with **avrdude 6.3 pinned** (the board's 2016 bootloader does not sync with avrdude 8.x):
+PlatformIO, `upload_protocol = arduino` (the board runs Optiboot; avrdude 6.3 or 8.x):
 
 ```
 cd firmware/aiready_base

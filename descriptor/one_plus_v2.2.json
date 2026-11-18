@@ -7,9 +7,14 @@
     "origin": "3D-printer all-in-one controller, RAMPS 1.4 compatible (Arduino Mega 2560 + RAMPS on one PCB)",
     "profile": "cnc-poc-1",
     "profile_description": "Treat as a generalised CNC / motion controller, not a 3D printer. Heater, bed and fan outputs are unused and must stay off. TEMP0 thermistor is attached to the X stepper driver chip, TEMP1 thermistor to the X stepper motor, to monitor the effect of the X current setting.",
-    "descriptor_rev": "2026-11-18",
+    "descriptor_rev": "2026-11-19",
     "human_docs": ["docs/protocol.md"],
-    "tools": {"repo": "https://github.com/laurencecrew/aiready_poc", "install": "pip install mcp git+https://github.com/laurencecrew/aiready_poc#subdirectory=host", "cli": "python -m aiready discover|describe [section]|state|flash <hex>", "mcp": "python -m aiready.mcp_server (stdio)"}
+    "tools": {
+      "repo": "https://github.com/laurencecrew/aiready_poc",
+      "install": "pip install mcp git+https://github.com/laurencecrew/aiready_poc#subdirectory=host",
+      "cli": "python -m aiready discover|describe [section]|state|flash <hex>",
+      "mcp": "python -m aiready.mcp_server (stdio)"
+    }
   },
   "status_tags": {
     "V": "verified on this physical board",
@@ -18,49 +23,70 @@
     "?": "unknown or guessed - verify before relying on it"
   },
   "mcu": {
-    "part": "ATmega2560", "arch": "AVR8", "signature": "1E9801", "clock_hz": 16000000, "crystal": "external 16 MHz",
-    "flash_bytes": 262144, "app_max_bytes": 237568, "app_wdt_safe_max_bytes": 131072, "sram_bytes": 8192, "eeprom_bytes": 4096,
-    "fuses": {"low": "FF", "high": "D8", "ext": "FD", "meaning": "full-swing crystal, BOOTRST, 4K-word boot section, JTAG off, SPIEN, BOD 2.7 V"},
-    "logic_v": 5, "gpio_ma_continuous": 20, "gpio_ma_abs_max": 40,
+    "part": "ATmega2560",
+    "arch": "AVR8",
+    "signature": "1E9801",
+    "clock_hz": 16000000,
+    "crystal": "external 16 MHz",
+    "flash_bytes": 262144,
+    "app_max_bytes": 244736,
+    "sram_bytes": 8192,
+    "eeprom_bytes": 4096,
+    "fuses": {
+      "low": "FF",
+      "high": "DE",
+      "ext": "FD",
+      "lock": "CF",
+      "meaning": "full-swing crystal, BOOTRST, 512-word (1 KB) boot section, JTAG off, SPIEN, EESAVE off, BOD 2.7 V; lock: app cannot write or read the boot section"
+    },
+    "logic_v": 5,
+    "gpio_ma_continuous": 20,
+    "gpio_ma_abs_max": 40,
     "adc": {"bits": 10, "ref": "AVCC 5 V (rail not measured)", "status": "V"},
     "s": "V"
   },
   "memory_map": [
-    {"start": "0x00000", "end": "0x1FFFF", "use": "application; keep code below 0x20000 or watchdog resets break (bootloader jumps to 0x20000 after a WDT reset)"},
-    {"start": "0x20000", "end": "0x39FFF", "use": "application overflow (watchdog-unsafe), else blank 0xFF"},
-    {"start": "0x3A000", "end": "0x3BFFF", "use": "aiready descriptor block (this data); starts with jmp 0x3E000 landing pad. Survives normal uploads"},
-    {"start": "0x3C000", "end": "0x3DFFF", "use": "0x00 NOP fill. The bootloader never erases pages >= 0x3C000, so this region is not reusable"},
-    {"start": "0x3E000", "end": "0x3FFFF", "use": "STK500v2 bootloader (boot section). Never write"}
+    {"start": "0x00000", "end": "0x3BBFF", "use": "application (max 244736 bytes)"},
+    {
+      "start": "0x3BC00",
+      "end": "0x3FBFF",
+      "use": "aiready descriptor block, 16 KB (this data). Never written by app uploads; rewritten on its own by 'aiready write-descriptor'"
+    },
+    {"start": "0x3FC00", "end": "0x3FFFF", "use": "Optiboot bootloader (1 KB boot section, lock-protected). Never write"}
   ],
   "programming": {
-    "bootloader": "Arduino explorer stk500V2 by MLS (classic Mega2560), 115200 baud, ~1.24 s window after reset",
-    "upload": "USB via bootloader; no ISP needed",
-    "avrdude": {"required_version": "6.3", "broken_versions": "8.x (does not sync)", "args": "-c wiring -p m2560 -b 115200 -D"},
+    "bootloader": "Optiboot (MegaCore optiboot_flash, ATmega2560 UART0 115200 16 MHz, BIGBOOT, LED on D13). Installed by ISP 2026-11-19 (replaced the 2013 'stk500V2 by MLS' bootloader)",
+    "upload": "USB via bootloader (STK500v1); ISP (USBasp) only to change the bootloader or fuses",
+    "entry": "Only after an external reset (DTR auto-reset or RESET button), ~1 s timeout. Power-on and watchdog resets start the app directly",
+    "avrdude": {"versions": "6.3 and 8.x", "args": "-c arduino -p m2560 -b 115200 -D"},
     "platformio": {
-      "board": "megaatmega2560", "framework": "arduino", "upload_speed": 115200,
-      "platform_packages": "platformio/tool-avrdude@~1.60300.0",
-      "board_upload.maximum_size": 237568,
+      "board": "megaatmega2560",
+      "framework": "arduino",
+      "upload_protocol": "arduino",
+      "upload_speed": 115200,
+      "board_upload.maximum_size": 244736,
       "build_dir_note": "keep build_dir off Google Drive: ${sysenv.LOCALAPPDATA}/pio-build/<name>"
     },
     "quirks": [
-      "The bootloader does not erase the page it writes: it erases pages in order from 0x0000, one per page written in that session, and never at or above 0x3C000. Only write contiguous images starting at 0x0000 (aiready flash does this). A partial write elsewhere erases the start of the app.",
-      "After a watchdog reset the bootloader jumps to 0x20000 (EIND=1 bug); blank flash slides into the bootloader, which then starts the app normally after ~1.24 s.",
-      "Images containing the bytes '!!!' can hang the upload (old STK500v2 monitor trigger). Avoid in string literals.",
-      "Bootloader clears MCUSR: apps always see 0. Use a .noinit 32-bit magic for reset cause.",
-      "Watchdog works, no boot loop.",
-      "Arduino IDE 2.x ships avrdude 8 and fails; use PlatformIO or the aiready tool."
+      "Optiboot erases each page it writes, so partial images are safe; app uploads must still not reach 0x3BC00 (descriptor).",
+      "A byte that is not a valid STK500 command during the bootloader window causes a 16 ms watchdog reset into the app: it is lost, nothing hangs.",
+      "MCUSR reaches the app unchanged (also in r2). The HAL reports it as the reset cause.",
+      "Watchdog resets go straight to the app, no bootloader delay [V]; no app-size limit (Optiboot uses jmp 0) [R]."
     ],
     "readback": "Flash and EEPROM can be read back through the bootloader (aiready readback)",
     "tool": "host/aiready: 'aiready flash <hex>' backs up, strips protected regions, uploads, verifies",
     "s": "V"
   },
   "host_link": {
-    "usb_serial": "CH340G", "vid_pid": "1A86:7523", "uart": "UART0 (D0 RX, D1 TX)", "typical_port": "COM5",
+    "usb_serial": "CH340G",
+    "vid_pid": "1A86:7523",
+    "uart": "UART0 (D0 RX, D1 TX)",
+    "typical_port": "COM5",
     "dtr_resets_mcu": true,
-    "open_without_reset": "Open with DTR and RTS disabled, and close with both disabled in the saved port config (rewrite the DCB, e.g. re-apply the baud rate). Otherwise the next DTR-disabled open can make a short DTR pulse that hangs the MCU until a proper reset. host/aiready does this.",
-    "bootloader_window_rule": "Any byte received during the ~1.24 s bootloader window keeps the bootloader resident: wait for the app banner before sending.",
+    "open_without_reset": "Open with DTR and RTS disabled, and close with both disabled in the saved port config (rewrite the DCB, e.g. re-apply the baud rate). Otherwise the next DTR-disabled open makes a short DTR pulse that resets the board once (app back after ~1 s). host/aiready does this.",
+    "bootloader_window_rule": "After a reset the bootloader listens ~1 s; the app banner follows. Bytes sent before the banner are lost (they make Optiboot restart into the app), so wait for the banner before sending.",
     "runtime_baud": 115200,
-    "runtime_protocol": "Send '@ai <cmd>' lines; runtime answers with one JSON line. Commands: id, desc <off> <len>, state, watch <ms>, pins, peek <addr> <n>, safe, clear, help. Boot banner is a JSON line starting {\"aiready\":",
+    "runtime_protocol": "Send '@ai <cmd>' lines; runtime answers with one JSON line whose \"r\" names the command. Commands: id, desc <off> <len>, state, watch <ms>, pins, peek <addr> <n>, safe, clear, reboot, help. Boot banner: {\"r\":\"banner\",...}",
     "s": "V"
   },
   "pins": [
@@ -243,8 +269,7 @@
     {"id": "S3", "rule": "Any heater control must include thermistor open/short detection and thermal-runaway / max-on-time cutoff."},
     {"id": "S4", "rule": "Do not drive D4, D6, D7 HIGH until identified."},
     {"id": "S5", "rule": "No tone(): it takes Timer2 (heater/fan PWM)."},
-    {"id": "S6", "rule": "Never write flash at or above 0x3A000 from an app (descriptor, NOP fill, bootloader). Keep app code below 0x20000."},
-    {"id": "S7", "rule": "Avoid the byte sequence '!!!' in firmware images."},
+    {"id": "S6", "rule": "Never write flash at or above 0x3BC00 from an app (descriptor block, bootloader)."},
     {"id": "S8", "rule": "Keep the X thermal guard enabled while X is energised (profile cnc-poc-1)."},
     {"id": "S9", "rule": "Before any motion command check state.drivers_enabled: a driver may already be energised (by the user or another tool)."}
   ],

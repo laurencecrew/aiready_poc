@@ -20,9 +20,9 @@ Pin numbers are **Arduino Mega 2560 pin numbers** unless noted. A C header with 
 | Board | FYSETC "One+" V2.2, a.k.a. AIO / AIO_I. Sold e.g. as ledsandchips LC-711. | — |
 | Electrical compatibility | RAMPS 1.4 pin assignment (Arduino Mega 2560 + RAMPS on one PCB) | [V] partly |
 | MCU | ATmega2560, signature 1E 98 01, 16 MHz external crystal | [V] |
-| Flash / SRAM / EEPROM | 256 KB (248 KB usable, 8 KB boot section) / 8 KB / 4 KB | [V] |
-| Fuses | L=0xFF H=0xD8 E=0xFD (ext. full-swing crystal; BOOTRST, 4 K-word boot; JTAG off; SPIEN; BOD 2.7 V) | [V] |
-| Bootloader | "Arduino explorer stk500V2 by MLS" (classic Mega2560 STK500v2), 115200 baud, ~1.24 s window after reset | [V] |
+| Flash / SRAM / EEPROM | 256 KB (255 KB usable, 1 KB boot section) / 8 KB / 4 KB | [V] |
+| Fuses | L=0xFF H=0xDE E=0xFD, lock 0xCF (ext. full-swing crystal; BOOTRST, 512-word boot; JTAG off; SPIEN; BOD 2.7 V). Factory: H=0xD8, lock 0x3F | [V] |
+| Bootloader | **Optiboot** (MegaCore optiboot_flash, STK500v1), 115200 baud, ~1 s window after an external reset. Factory: 2013 "stk500V2 by MLS", replaced 2026-11-19 (§2.1) | [V] |
 | USB-serial | CH340G on UART0 (D0 RX, D1 TX); DTR auto-reset (opening the port resets the MCU) | [V] |
 | Stepper drivers | 4 × Allegro **A4988** (marked "4988ET" = A4988SET, 28-pin QFN, soldered on board). Axes X, Y, Z, E0. **1/16 microstep** (3200 steps/rev with a 1.8° motor). | [V] |
 | Power input | 12 V or 24 V DC. Heater/bed/fan outputs switch Vin. | store page |
@@ -41,52 +41,43 @@ Pin numbers are **Arduino Mega 2560 pin numbers** unless noted. A C header with 
 
 ## 2. Programming / toolchain
 
-- **Upload over USB works** with the existing bootloader. No ISP programmer needed.
-- **avrdude 8.x does NOT sync with this bootloader**; **avrdude 6.3 works**. With PlatformIO, pin it:
+**Bootloader replaced 2026-11-19 (ISP, USBasp):** the original 2013 "Arduino explorer stk500V2 by MLS" bootloader was replaced by **Optiboot** (MegaCore v2.2.3 `optiboot_flash_atmega2560_UART0_115200_16000000L_B7_BIGBOOT.hex`, 1 KB at 0x3FC00). Fuses now L=0xFF H=0xDE E=0xFD, lock 0xCF (reads 0x0F). Full ISP backup taken before the change (flash incl. the old bootloader, EEPROM): `backups/isp_20261119_102942_flash.hex` / `_eeprom.hex` (not in git). To restore the old bootloader: ISP-write that flash image with hfuse 0xD8.
+
+- **Upload over USB** through Optiboot (STK500v1): avrdude `-c arduino -p m2560 -b 115200 -D`. **avrdude 6.3 and 8.1 both work [V]**; the old 6.3 pin is no longer needed. PlatformIO:
   ```ini
   [env:one_plus]
   platform = atmelavr
   board = megaatmega2560
   framework = arduino
   upload_speed = 115200
-  platform_packages = platformio/tool-avrdude@~1.60300.0
+  upload_protocol = arduino
+  board_upload.maximum_size = 244736
   ```
-  Manual: `avrdude -c wiring -p m2560 -P COM5 -b 115200 -D -U flash:w:firmware.hex:i` (avrdude 6.3 at `%USERPROFILE%\.platformio\packages\tool-avrdude@1.60300.200527\`).
-  Arduino IDE 2.x ships avrdude 8. Uploads from the IDE will fail unless its avrdude is replaced or PlatformIO is used.
-- Board was on **COM5** (CH340). Close Arduino IDE / serial monitors before uploading ("Access is denied").
-- Old STK500v2 Mega bootloaders have a known quirk: firmware images containing the byte sequence `!!!` can hang the upload (monitor-mode trigger). Avoid `"!!!"` in string literals. (Not tested on this unit.)
-- **Watchdog works [V]**: probe `wdt` (`wdt_enable(WDTO_1S)` then hang) reboots cleanly after ~1 s and runs the application again. No boot-loop.
-- **The bootloader clears `MCUSR` [V]**: the application always sees `MCUSR = 0` (seen after both watchdog and USB/DTR resets; presumably the same for all reset types). Firmware **cannot** use MCUSR to detect the reset cause. Workaround if needed: before an intentional reset, write a magic value to a `__attribute__((section(".noinit")))` variable and check it at boot (a power-on reset leaves random RAM, so use a 32-bit magic).
-- Still call `MCUSR = 0; wdt_disable();` early in `setup()` (harmless, and safe if the bootloader is ever replaced).
+  (atmelavr still installs avrdude 6.3 by default; `aiready flash` uses the newest PlatformIO avrdude it finds.)
+- Board enumerates as **COM5 or COM6** (CH340, 1A86:7523). Close serial monitors before uploading ("Access is denied"); right after a `pio run -t upload` the port can stay busy for a moment.
+- **Bootloader entry [V]:** only after an external reset (DTR auto-reset, RESET button); ~1 s timeout, LED on D13 flashes. Power-on and watchdog resets jump straight to the app (`jmp 0`). Bytes that are not valid STK500 commands make Optiboot watchdog-reset into the app (16 ms): junk sent right after a reset is lost, the banner still appears (~1.5 s) [V].
+- **Watchdog works [V]**: `@ai reboot` (WDTO_15MS) restarts the app at once; reported reset cause `soft`. No app-size limit any more (the old bootloader's 0x20000 bug is gone; Optiboot uses `jmp 0`) [R, from source].
+- **MCUSR reaches the app [V]** (Optiboot keeps it, and also passes it in r2). The HAL saves it in `.init3` before clearing it: `aiResetCause()` = soft / power_on / brownout / watchdog / external / jtag; `@ai id` shows `reset` and `mcusr`. After a DTR reset or an upload MCUSR = 0x02 (EXTRF).
+- **Page writes erase their own page [V]**: Optiboot erases each page it programs, so partial images are fine. `aiready write-descriptor` writes only the 64 block pages (~4 s) and the app is untouched.
+- Lock 0xCF: the app cannot write (SPM) or read (LPM) the boot section; the bootloader can read all of flash (`aiready readback` dumps 0x00000–0x3FFFF).
 
-### 2.1 Bootloader behaviour (from disassembly of the boot section + on-board tests, 2026-11-18) [V]
+### 2.1 The original bootloader (history, until 2026-11-18)
 
-These four quirks decide how flash can be used. The `aiready` host tool handles all of them.
-
-1. **Watchdog reset jumps to 0x20000, not 0x0000.** The bootloader's startup sets `EIND = 1`. On a WDT reset (`MCUSR.WDRF`) it disables the WDT and `eicall`s its zeroed app pointer, which lands at byte 0x20000. On blank (0xFF) flash the CPU slides up to the bootloader at 0x3E000, which then boots normally (~1.24 s window, then `ijmp 0`). That's why the probe `wdt` test "worked".
-   - Application code must stay **below 0x20000 (128 KB)**, or a WDT reset will execute whatever is at 0x20000.
-   - Anything else stored in 0x20000–0x3DFFF must not break the slide. The aiready descriptor block starts with `jmp 0x3E000` for this reason.
-2. **The page being written is not erased.** The bootloader erases pages **sequentially from 0x0000**, one per page written in that session, whatever the target address. Normal uploads (contiguous from 0x0000) are fine, and pages beyond the image are never touched. A partial write elsewhere (e.g. a HEX that starts at 0x3A000) **erases the start of the application** and programs the target pages without an erase (result = old AND new). Only write contiguous images from 0x0000.
-3. **Pages at or above 0x3C000 are never erased** (its erase limit is 0x3C000, below the real boot section at 0x3E000). 0x3C000–0x3DFFF can only have bits cleared via this bootloader. It is kept as all-0x00 (AVR `nop`) fill.
-4. **Any byte received during the ~1.24 s window keeps the bootloader resident** (it waits for STK500 frames indefinitely). After a reset, wait for the app's banner before sending.
-
-Also see §2.2 for a host-side (Windows driver) trap when opening the port without a reset.
+"Arduino explorer stk500V2 by MLS", compiled Mar 7 2013, 8 KB at 0x3E000, avrdude 6.3 only (`-c wiring`; 8.x did not sync). Disassembly and tests found: (1) watchdog reset jumped to 0x20000 (EIND = 1 + `eicall`), so app code had to stay below 128 KB and the descriptor block needed a `jmp` landing pad; (2) pages were erased sequentially from 0x0000, not at the target address, so only contiguous images from 0 could be written; (3) pages at or above 0x3C000 were never erased; (4) a byte received in its ~1.24 s window kept it resident; (5) it cleared MCUSR; (6) `!!!` monitor trigger. All of these were the reason for the replacement. The 4-byte `jmp` at the start of the descriptor header is a leftover of (1).
 
 ### 2.2 Opening the port without resetting the board [V]
 
-Opening COM5 with pyserial defaults asserts DTR and resets the MCU. To query a running app without restarting it, open with `dtr=False, rts=False`. On Windows the CH340 driver first re-applies the *saved* port configuration (DCB) when the port is opened. If the previous session left DTR enabled there, this open makes a short DTR pulse that **leaves the MCU hung (not reset)** until a proper reset. pyserial's `ser.dtr = False` only toggles the line, so before closing also rewrite the DCB (`ser.dtr = ser.rts = False; ser.baudrate = ser.baudrate`). `host/aiready/link.py: park_and_close()` does this.
+Opening the port with pyserial defaults asserts DTR and resets the MCU. To query a running app without restarting it, open with `dtr=False, rts=False`. On Windows the CH340 driver first re-applies the *saved* port configuration (DCB) when the port is opened. If the previous session left DTR enabled there, this open makes a short DTR pulse that **resets the board** (re-tested 2026-11-19 with Optiboot: one reset, app back after ~1 s; with the old bootloader the MCU hung instead). pyserial's `ser.dtr = False` only toggles the line, so before closing also rewrite the DCB (`ser.dtr = ser.rts = False; ser.baudrate = ser.baudrate`). `host/aiready/link.py: park_and_close()` does this.
 
 ### 2.3 Flash memory map (aiready layout)
 
 | Range | Use |
 |---|---|
-| 0x00000–0x1FFFF | Application (watchdog-safe) |
-| 0x20000–0x39FFF | Application overflow (watchdog-unsafe, see §2.1), otherwise blank 0xFF |
-| 0x3A000–0x3BFFF | aiready descriptor block: `jmp 0x3E000`, "AIRD" header, zlib JSON. Survives app uploads |
-| 0x3C000–0x3DFFF | 0x00 (nop) fill; the bootloader cannot erase it |
-| 0x3E000–0x3FFFF | STK500v2 bootloader |
+| 0x00000–0x3BBFF | Application (max 244736 bytes) |
+| 0x3BC00–0x3FBFF | aiready descriptor block, 16 KB: reserved `jmp`, "AIRD" header, zlib JSON. Survives app uploads [V] |
+| 0x3FC00–0x3FFFF | Optiboot (1 KB boot section, lock-protected) |
 
-PlatformIO cap for apps: `board_upload.maximum_size = 237568`. `aiready write-descriptor` rewrites 0x0000–0x3DFFF as one image (app + fill + block + nop fill, ~70 s). `aiready flash` writes the app only (contiguous from 0x0000) and never touches the block.
+PlatformIO cap for apps: `board_upload.maximum_size = 244736`. `aiready flash` strips anything at or above 0x3BC00 from an app image.
 
 ---
 

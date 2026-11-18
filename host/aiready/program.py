@@ -1,4 +1,4 @@
-"""Flashing and read-back through the bootloader with avrdude 6.3 (8.x cannot sync)."""
+"""Flashing and read-back through the Optiboot bootloader (STK500v1, avrdude '-c arduino')."""
 from __future__ import annotations
 
 import glob
@@ -11,27 +11,27 @@ import time
 from pathlib import Path
 
 from . import BACKUP_DIR, DESCRIPTOR_HEX, DESCRIPTOR_JSON, ihex
-from .block import BLOCK_ADDR, BLOCK_SIZE, BOOT_ADDR, NOP_FILL_ADDR, WDT_SAFE_APP_LIMIT, pack, parse_header, to_hex_map
-from .board import BoardError, local_descriptor, probe_port, read_block_bootloader, resolve_port
-
-PAGE = 256
+from .block import APP_MAX, BLOCK_ADDR, BLOCK_SIZE, BOOT_ADDR, PAGE, pack, parse_header, to_hex_map
+from .board import BoardError, local_descriptor, probe_port, resolve_port
 
 
 def find_avrdude() -> tuple[str, str]:
+    """AIREADY_AVRDUDE_DIR, else PlatformIO's avrdude packages (any version works with Optiboot)."""
     env = os.environ.get("AIREADY_AVRDUDE_DIR")
-    roots = [env] if env else sorted(glob.glob(str(Path.home() / ".platformio" / "packages" / "tool-avrdude@1.60300*")))
-    for r in reversed(roots):
+    pk = Path.home() / ".platformio" / "packages"
+    roots = [env] if env else [str(pk / "tool-avrdude")] + sorted(glob.glob(str(pk / "tool-avrdude@*")), reverse=True)
+    for r in roots:
         exe = Path(r) / ("avrdude.exe" if os.name == "nt" else "avrdude")
         conf = Path(r) / "avrdude.conf"
         if exe.exists() and conf.exists():
             return str(exe), str(conf)
-    raise BoardError("avrdude 6.3 not found. Install with: pio pkg install -g -t platformio/tool-avrdude@~1.60300.0 "
+    raise BoardError("avrdude not found. Install with: pio pkg install -g -t platformio/tool-avrdude "
                      "(or set AIREADY_AVRDUDE_DIR)")
 
 
 def avrdude(port: str, ops: list[str], timeout: int = 300) -> str:
     exe, conf = find_avrdude()
-    cmd = [exe, "-C", conf, "-c", "wiring", "-p", "m2560", "-P", port, "-b", "115200", "-D"]
+    cmd = [exe, "-C", conf, "-c", "arduino", "-p", "m2560", "-P", port, "-b", "115200", "-D"]
     for op in ops:
         cmd += ["-U", op]
     p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -77,58 +77,34 @@ def readback(port: str | None = None, out_dir: Path = BACKUP_DIR, eeprom: bool =
 
 # ------------------------------------------------------------------ image preparation
 def prepare_image(mem: dict[int, int]) -> tuple[dict[int, int], list[str]]:
-    """Application region only, contiguous from 0x0000, no trailing blank pages.
-    Returns (image, notes).
-
-    Full readbacks (and the original Marlin backup) include the bootloader and descriptor
-    regions; writing those through the bootloader is never wanted.
-
-    Contiguity matters: this bootloader does not erase the page it writes. It erases pages
-    sequentially from 0x0000 (one per page written in the session). Any gap or a non-zero
-    start makes later pages get programmed without an erase (corrupted) and erases pages
-    that were not meant to be touched."""
+    """Application region only, no trailing blank pages. Returns (image, notes).
+    Full readbacks include the descriptor block and the bootloader; writing those as part of
+    an app upload is never wanted (the block has its own command, the bootloader is ISP-only)."""
     notes = []
     boot = sum(1 for a in mem if a >= BOOT_ADDR)
     if boot:
         notes.append(f"stripped {boot} bytes at/above 0x{BOOT_ADDR:05X} (bootloader is never written)")
     desc = sum(1 for a in mem if BLOCK_ADDR <= a < BOOT_ADDR)
     if desc:
-        notes.append(f"stripped {desc} bytes in the descriptor block / NOP fill 0x{BLOCK_ADDR:05X}-0x{BOOT_ADDR - 1:05X}")
+        notes.append(f"stripped {desc} bytes in the descriptor block 0x{BLOCK_ADDR:05X}-0x{BOOT_ADDR - 1:05X}")
     img = {a: b for a, b in mem.items() if a < BLOCK_ADDR}
     used = [a for a, b in img.items() if b != 0xFF]
     if not used:
         raise BoardError("image is empty")
-    # Readbacks are padded with 0xFF to the end of flash; keep blank pages inside the image only.
-    end = (max(used) // PAGE + 1) * PAGE
+    end = (max(used) // PAGE + 1) * PAGE   # readbacks are 0xFF-padded to the end of flash
     dropped = sum(1 for a in img if a >= end)
     if dropped:
         notes.append(f"dropped {dropped} trailing blank bytes")
-    gaps = sum(1 for a in range(max(used) + 1) if a not in img)
-    if gaps:
-        notes.append(f"filled {gaps} gap bytes with 0xFF so every page from 0x0000 is written in order")
-    img = {a: img.get(a, 0xFF) for a in range(end)}
-    return img, notes
-
-
-def check_bang3(img: dict[int, int]) -> list[str]:
-    hits = ihex.contains_bang3(img)
-    return [f"0x{a:05X}" for a in hits[:10]]
+    return {a: v for a, v in img.items() if a < end}, notes
 
 
 # ------------------------------------------------------------------ flash
-def flash(hex_path: str | Path, port: str | None = None, backup: bool = True, force: bool = False,
+def flash(hex_path: str | Path, port: str | None = None, backup: bool = True,
           restore_descriptor: bool = True) -> dict:
     port = resolve_port(port)
     hex_path = Path(hex_path)
     mem = ihex.load(hex_path)
     img, notes = prepare_image(mem)
-    bang = check_bang3(img)
-    if bang and not force:
-        raise BoardError(f"image contains '!!!' at {bang}: this bootloader can hang on it. "
-                         "Change the string, or pass force=True to try anyway.")
-    if max(img) >= WDT_SAFE_APP_LIMIT:
-        notes.append("WARNING: image extends past 0x20000. After a watchdog reset this bootloader jumps to "
-                     "0x20000 (EIND bug) and will execute application code there instead of rebooting.")
     res: dict = {"port": port, "hex": str(hex_path), "image_bytes": max(img) + 1, "notes": notes}
     if backup:
         res["backup"] = readback(port)
@@ -167,50 +143,22 @@ def pack_descriptor(json_path: Path = DESCRIPTOR_JSON, out: Path = DESCRIPTOR_HE
             "raw_json_bytes": len(json.dumps(obj, separators=(',', ':')))}
 
 
-def current_app_image(port: str) -> dict[int, int]:
-    """Read the application region from the board (bootloader, ~25 s) as a prepared image."""
-    from .stk500 import read_flash_range
-    data = read_flash_range(port, 0, BLOCK_ADDR)
-    img, _ = prepare_image(ihex.from_bytes(0, data))
-    return img
+def write_descriptor(port: str | None = None, json_path: Path = DESCRIPTOR_JSON) -> dict:
+    """Pack the JSON and write the whole 16 KB block (0xFF-padded) through Optiboot, page by
+    page, then read it back. Optiboot erases each page it writes; the app is not touched."""
+    from .stk500 import write_flash_pages
 
-
-def write_descriptor(port: str | None = None, json_path: Path = DESCRIPTOR_JSON,
-                     app_hex: str | Path | None = None) -> dict:
-    """Write the descriptor block. Because of the bootloader's sequential-erase bug the block
-    can only be written as part of ONE contiguous image from 0x0000:
-      app | 0xFF to 0x3A000 | block | 0xFF to 0x3C000 | 0x00 (NOP) fill to 0x3DFFF
-    The bootloader never erases >= 0x3C000, so that region only ever gets bits cleared: all
-    zeros is the one stable content, and 0x0000 is an AVR NOP for the watchdog-reset slide.
-    The app is taken from app_hex, or read back from the board first (~25 s extra)."""
     port = resolve_port(port)
     info = pack_descriptor(json_path)
-    if app_hex:
-        app, _ = prepare_image(ihex.load(app_hex))
-        info["app_source"] = str(app_hex)
-    else:
-        app = current_app_image(port)
-        info["app_source"] = "read back from board"
-    blk_map = ihex.load(info["hex"])
-    full = {a: app.get(a, 0xFF) for a in range(NOP_FILL_ADDR)}
-    full.update(blk_map)
-    full.update({a: 0x00 for a in range(NOP_FILL_ADDR, BOOT_ADDR)})
-    end = BOOT_ADDR
-    bang = check_bang3(full)
-    if bang:
-        raise BoardError(f"combined image contains '!!!' at {bang}")
-    info["app_bytes"] = max(app) + 1
-    info["image_bytes"] = end
-    with tempfile.TemporaryDirectory() as td:
-        tmp = Path(td) / "full.hex"
-        ihex.save(full, tmp)
-        t0 = time.monotonic()
-        out = avrdude(port, [f"flash:w:{tmp}:i"], timeout=600)
-        info["write_seconds"] = round(time.monotonic() - t0, 1)
-    info["verified"] = "verified" in out.lower()
-    time.sleep(0.3)
-    blk = read_block_bootloader(port)
-    h = parse_header(blk)
-    info["read_back_id"] = h.id if h else None
-    info["ok"] = bool(h and h.id == info["id"])
+    blk = ihex.load(info["hex"])
+    data = bytes(blk.get(BLOCK_ADDR + i, 0xFF) for i in range(BLOCK_SIZE))
+    pages = {BLOCK_ADDR + o: data[o:o + PAGE] for o in range(0, BLOCK_SIZE, PAGE)}
+    w = write_flash_pages(port, pages)
+    info.update(write_seconds=w["seconds"], pages=w["pages"], verified=w["verified"])
+    if w["mismatch"]:
+        info["mismatch_pages"] = w["mismatch"]
+    time.sleep(1.0)   # bootloader exits by watchdog reset; let the app print its banner
+    p = probe_port(port)
+    info["runtime_reports_id"] = p.get("descriptor_id")
+    info["ok"] = bool(w["verified"])
     return info

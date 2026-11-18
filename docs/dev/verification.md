@@ -66,6 +66,23 @@ Do **not** feed that dump to avrdude directly any more: it covers 0x00000–0x3F
 | 36 | Encoder resolution | Blind test: 5 detents turned by user | **2 counts per detent** (HAL guessed 4). `AI_ENC_STEPS_PER_DETENT` = 2 |
 | 37 | Blind self-description test | Fresh agent with only the board + tools ([blind_test.md](blind_test.md)) | Built and flashed a working X jog app; found the buzzer and encoder errors. See blind_test.md for scores and gaps |
 
+## Done (2026-11-19): bootloader replaced with Optiboot (ISP, USBasp)
+
+Items 29, 30 and 31's hang describe the old bootloader and no longer apply.
+
+| # | Item | Method | Result |
+|---|---|---|---|
+| 38 | ISP access + full backup | USBasp (libusbK), avrdude 6.3 `-c usbasp -B 2` | Signature 1E9801; fuses L=FF H=D8 E=FD, lock 3F. Full flash (incl. old bootloader: "Arduino explorer stk500V2 by MLS", Mar 7 2013) + EEPROM saved to `backups/isp_20261119_102942_*` |
+| 39 | Optiboot install | `-e`, MegaCore v2.2.3 `optiboot_flash_atmega2560_UART0_115200_16000000L_B7_BIGBOOT.hex`, hfuse 0xDE, lock 0xCF | All verified; lock reads 0x0F (= 0xCF, unused bits read 0) |
+| 40 | Host Optiboot client | `stk500.py` read at 0x3BC00 and 0x3FC00 | Syncs and reads in 0.3 s; 0x3FC00 returns the Optiboot code, so the >128 KB addressing (UNIVERSAL 0x4D + LOAD_ADDRESS) is right |
+| 41 | Upload, avrdude 8.1 | `aiready flash` (`-c arduino`, auto backup) | Backup 30 s, write + verify 7.6 s, runtime answers |
+| 42 | Descriptor-only write | `aiready write-descriptor` path (64 pages via Optiboot) | 4.2 s incl. read-back verify; app untouched, runtime reports the new id |
+| 43 | Upload, avrdude 6.3 + survival | `pio run -t upload` (`upload_protocol = arduino`, PlatformIO picked 6.3) then `aiready check` | Upload OK; descriptor id unchanged |
+| 44 | Watchdog reboot | `@ai reboot` (WDTO_15MS) | Back at once, `reset` = `soft`, MCUSR = 0x08 (WDRF): MCUSR now reaches the app |
+| 45 | Reset cause after DTR / upload | `@ai id` | `external`, MCUSR = 0x02 |
+| 46 | Bytes during the boot window | DTR reset, then `@ai id` + text sent within 50 ms | Lost; banner after 1.55 s; runtime answers. No hang |
+| 47 | No-reset open after an unparked DTR session | Plain DTR open/close, then three DTR-disabled opens | First open reset the board once (DCB pulse), app back after ~1 s; the next opens did not reset. Previously this hung the MCU |
+
 Notes:
 - `-D` uploads never erase above the image, so readbacks contain **stale pages from older, larger firmware** (e.g. 101 KB "used" after a 15 KB lcdtest over Marlin). `app_sha` in backups covers those stale bytes too.
 - Thermistors on TEMP0/TEMP1 both read ~27–29 °C at room temperature.

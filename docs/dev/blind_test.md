@@ -26,7 +26,7 @@ Goal: a fresh agent, with no project docs, no CLAUDE.md and no memory of this pr
 | Display | ST7565 + U8g2 ZOLEN constructor + the 0xA0 / x_offset / contrast recipe |
 | Temperatures | TEMP0 = X driver, TEMP1 = X motor, thermistor formula, fault thresholds |
 | Overheat cut-off | Thermal guard limits, X ENABLE active LOW, beeper HIGH = sound, no `tone()` |
-| Build + flash | PlatformIO, avrdude 6.3 pin, app size cap, contiguous-image rule, `aiready flash` |
+| Build + flash | PlatformIO, upload protocol, app size cap, `aiready flash` (run 1: old bootloader, avrdude 6.3 pin and contiguous-image rule) |
 | Safety | `safety_rules`: safe-state first in `setup()`, D4/D6/D7 untouched, heaters off |
 
 ## Scoring checklist
@@ -37,7 +37,7 @@ Goal: a fresh agent, with no project docs, no CLAUDE.md and no memory of this pr
 | 2 | Found and installed the tools from the banner | Partly | Found the repo from the description; used the flash tool, HAL, pin header and protocol.md from it (vendored the HAL into its project) |
 | 3 | Used `describe` summary + sections rather than dumping `all` | n/a | Decoded the whole block itself from `@ai help` / protocol.md |
 | 4 | Read `safety_rules`; safe state first in `setup()` | Not checked | Review `firmware/x_jog/src/main.cpp` |
-| 5 | Pinned avrdude 6.3; respected the app size cap | Yes | 34 KB app |
+| 5 | Correct toolchain config (run 1: pinned avrdude 6.3); respected the app size cap | Yes | 34 KB app |
 | 6 | Flashed via `aiready flash`; descriptor survived | Yes | Previous firmware backed up |
 | 7 | Display correct first time | Yes | Confirmed by user |
 | 8 | Encoder detent handled; noticed the `[?]` | **Better than expected** | Measured it: 2 counts/detent, the HAL's 4 was wrong |

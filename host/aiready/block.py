@@ -1,7 +1,7 @@
 """Descriptor block: the self-description as stored in board flash.
 
 Layout at BLOCK_ADDR (little-endian, 32-byte header, then zlib payload):
-  0  4s  landing pad: AVR 'jmp 0x3E000' (0D 94 00 F0)
+  0  4s  reserved: AVR 'jmp <bootloader>' (0D 94 00 FE = jmp 0x3FC00); ignore when reading
   4  4s  magic "AIRD"
   8  u16 format (1)
  10  u16 compression (1 = zlib)
@@ -10,11 +10,10 @@ Layout at BLOCK_ADDR (little-endian, 32-byte header, then zlib payload):
  20  u32 CRC32 of payload
  24  8s  id = first 8 bytes of SHA-256(minified JSON)
 
-Why the landing pad: after a watchdog reset this bootloader 'eicall's its app pointer with
-EIND=1, i.e. it jumps to 0x20000 instead of 0x0000. On blank flash the CPU slides through
-0xFFFF words into the bootloader at 0x3E000 and boots normally. The block sits in that path,
-so it must start with a jump to the bootloader, or the CPU executes descriptor data and hangs.
-(Consequence: application code must stay below 0x20000 for watchdog resets to work.)
+The block is the 16 KB directly below the 1 KB Optiboot bootloader. Optiboot erases each page
+it writes, so the block survives normal app uploads (which never reach it) and can be
+rewritten on its own. The leading jmp is a leftover from the old stk500v2 bootloader (whose
+watchdog path slid into this area); it is harmless and keeps the header format unchanged.
 """
 from __future__ import annotations
 
@@ -24,14 +23,14 @@ import struct
 import zlib
 from dataclasses import dataclass
 
-BLOCK_ADDR = 0x3A000
-BLOCK_SIZE = 0x2000
-NOP_FILL_ADDR = 0x3C000  # bootloader never erases >= here: keep as 0x00 (NOP) fill
-BOOT_ADDR = 0x3E000
+BOOT_ADDR = 0x3FC00      # Optiboot (MegaCore optiboot_flash BIGBOOT), 1 KB boot section
+BLOCK_SIZE = 0x4000      # 16 KB
+BLOCK_ADDR = BOOT_ADDR - BLOCK_SIZE   # 0x3BC00
+APP_MAX = BLOCK_ADDR     # 244736 bytes
 FLASH_SIZE = 0x40000
+PAGE = 256
 MAGIC = b"AIRD"
-LANDING_PAD = bytes.fromhex("0d9400f0")  # jmp 0x3E000 (bootloader reset vector)
-WDT_SAFE_APP_LIMIT = 0x20000
+LANDING_PAD = bytes.fromhex("0d9400fe")  # jmp 0x3FC00 (reserved field, see above)
 HEADER = struct.Struct("<4s4sHHIII8s")
 HEADER_SIZE = HEADER.size  # 32
 FORMAT = 1
@@ -67,18 +66,15 @@ def parse_header(data: bytes) -> Header | None:
 
 
 def pack(obj) -> tuple[bytes, str]:
-    """Return (block bytes, id). Raises ValueError if it cannot fit or avoid '!!!'."""
+    """Return (block bytes, id). Raises ValueError if it does not fit."""
     raw = minify(obj)
     did = hashlib.sha256(raw).digest()[:8]
-    for level in (9, 8, 7, 6, 5, 4, 3, 2, 1):
-        payload = zlib.compress(raw, level)
-        block = HEADER.pack(LANDING_PAD, MAGIC, FORMAT, COMP_ZLIB, len(payload), len(raw),
-                            zlib.crc32(payload) & 0xFFFFFFFF, did) + payload
-        if len(block) > BLOCK_SIZE:
-            raise ValueError(f"descriptor too large: {len(block)} bytes > {BLOCK_SIZE}")
-        if b"!!!" not in block:
-            return block, did.hex()
-    raise ValueError("every compression level produced '!!!' (bootloader quirk); change the JSON slightly")
+    payload = zlib.compress(raw, 9)
+    block = HEADER.pack(LANDING_PAD, MAGIC, FORMAT, COMP_ZLIB, len(payload), len(raw),
+                        zlib.crc32(payload) & 0xFFFFFFFF, did) + payload
+    if len(block) > BLOCK_SIZE:
+        raise ValueError(f"descriptor too large: {len(block)} bytes > {BLOCK_SIZE}")
+    return block, did.hex()
 
 
 def unpack(block: bytes) -> tuple[Header, dict]:

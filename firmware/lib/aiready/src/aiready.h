@@ -26,9 +26,9 @@
 #define AI_MCP_CMD "python -m aiready.mcp_server"
 
 // ---------------------------------------------------------------- descriptor block
-#define AI_DESC_ADDR 0x3A000UL   // 8 KB block; 0x3C000-0x3DFFF is a NOP fill (bootloader cannot erase it)
-#define AI_DESC_SIZE 0x2000U
-#define AI_DESC_HEADER 32U       // jmp 0x3E000 (landing pad), "AIRD", fmt u16, comp u16, len u32, raw u32, crc u32, id[8]
+#define AI_DESC_ADDR 0x3BC00UL   // 16 KB block directly below the 1 KB Optiboot bootloader (0x3FC00)
+#define AI_DESC_SIZE 0x4000U
+#define AI_DESC_HEADER 32U       // reserved u32, "AIRD", fmt u16, comp u16, len u32, raw u32, crc u32, id[8]
 
 // ---------------------------------------------------------------- safe state
 // Call as the FIRST line of setup(). Heater/bed/fan LOW, all stepper drivers disabled,
@@ -36,8 +36,10 @@
 void aiSafeInit();
 // Force outputs safe again at any time (also '@ai safe'): MOSFETs LOW, drivers disabled.
 void aiSafeOutputs();
-// Reset cause from a .noinit magic (bootloader clears MCUSR): "soft" or "power_or_ext".
+// Reset cause from MCUSR (Optiboot passes it through) plus a .noinit magic for aiReboot():
+// "soft", "power_on", "brownout", "watchdog", "external" (RESET/DTR/after upload), "jtag", "unknown".
 const char *aiResetCause();
+uint8_t aiResetFlags();   // raw MCUSR at boot
 // Software reboot through the watchdog, recorded as "soft".
 void aiReboot();
 

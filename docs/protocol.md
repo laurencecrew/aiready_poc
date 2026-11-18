@@ -9,8 +9,8 @@ How to talk to an AI-ready board **without** the host tools. With them installed
 | Link | USB serial (CH340G, VID:PID 1A86:7523 on the POC board) |
 | Settings | 115200 baud, 8N1, no flow control |
 | Reset | Opening the port with DTR asserted (the default) resets the board |
-| After a reset | Bootloader runs ~1.24 s, then the app prints a banner line. **Send nothing until the banner appears**: a byte received during the bootloader window keeps the bootloader resident |
-| Querying without a reset | Open with DTR and RTS disabled. On Windows also close with both disabled *in the port configuration* (re-apply the baud rate before closing), or the next such open can hang the MCU |
+| After a reset | Bootloader listens ~1 s, then the app prints a banner line. **Wait for the banner before sending**: bytes sent earlier are lost |
+| Querying without a reset | Open with DTR and RTS disabled. On Windows also close with both disabled *in the port configuration* (re-apply the baud rate before closing), or the next such open pulses DTR and resets the board |
 
 ## 2. Commands
 
@@ -19,7 +19,7 @@ Send `@ai <command>` followed by a newline. Every reply is **one JSON line** who
 | Command | Reply (main fields) |
 |---|---|
 | `help` | `cmds`, `protocol`, `desc_format`, `tools`, `docs` |
-| `id` | `board`, `profile`, `fw`, `ver`, `built`, `desc` (descriptor id, or `"none"`), `desc_addr`, `reset` (`soft` or `power_ext_or_wdt`), `up_ms`, `ram_free`, `tools`, `install`, `mcp` |
+| `id` | `board`, `profile`, `fw`, `ver`, `built`, `desc` (descriptor id, or `"none"`), `desc_addr`, `reset` (`soft`, `power_on`, `brownout`, `watchdog`, `external`, `jtag`, `unknown`), `mcusr`, `up_ms`, `ram_free`, `tools`, `install`, `mcp` |
 | `desc <off> <len>` | `off`, `len` (≤ 128), `hex`: raw bytes of the descriptor block (see §3) |
 | `state` | `endstops`, `encoder`, `temp` (`x_driver`/`x_motor`: `c`, `adc`, `fault`), `drivers_enabled`, `guard`, `mosfet_level`, `sd_card`, `ram_free` |
 | `watch <ms>` | Streams `state` lines every `ms` (50–60000); `watch 0` stops |
@@ -33,11 +33,11 @@ The boot banner has the same fields as `id`, with `"r":"banner"`.
 
 ## 3. Descriptor block
 
-The board's self-description is an 8 KB block in flash (0x3A000 on the POC board). Read it with `desc`, 128 bytes at a time. Header, 32 bytes, little-endian:
+The board's self-description is a 16 KB block in flash (0x3BC00 on the POC board; `desc_addr` in `id`). Read it with `desc`, 128 bytes at a time. Header, 32 bytes, little-endian:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 4 | AVR `jmp` to the bootloader (landing pad, ignore) |
+| 0 | 4 | Reserved (an AVR `jmp` to the bootloader; ignore) |
 | 4 | 4 | Magic `AIRD` (absent: no descriptor written) |
 | 8 | 2 | Format = 1 |
 | 10 | 2 | Compression = 1 (zlib) |
@@ -78,4 +78,4 @@ print(descriptor["identity"])
 
 ## 4. When no runtime answers
 
-If the app is broken or lacks the runtime, the block can still be read through the STK500v2 bootloader: reset, `CMD_SIGN_ON`, `CMD_LOAD_ADDRESS` with the **word** address and bit 31 set (0x80000000 | 0x3A000/2), then `CMD_READ_FLASH_ISP` in 256-byte chunks. See [../host/aiready/stk500.py](../host/aiready/stk500.py). Never write through the bootloader except with contiguous images from 0x0000 (see the description's `programming.quirks`).
+If the app is broken or lacks the runtime, the block can still be read through the Optiboot bootloader (STK500v1, 115200): reset, `STK_GET_SYNC` (`30 20` → `14 10`), then per 256-byte page `STK_UNIVERSAL` `56 4D 00 <word_addr>>16> 00 20` and `STK_LOAD_ADDRESS` `55 <word_addr lo> <word_addr hi> 20` (**word** address), then `STK_READ_PAGE` `74 01 00 46 20` (reply `14` + 256 bytes + `10`); `STK_LEAVE_PROGMODE` `51 20` starts the app. See [../host/aiready/stk500.py](../host/aiready/stk500.py). To change the block use `aiready write-descriptor`.

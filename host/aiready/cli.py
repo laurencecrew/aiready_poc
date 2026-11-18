@@ -39,15 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("flash", help="back up, then upload an app HEX (protected regions stripped)")
     f.add_argument("hex")
     f.add_argument("--no-backup", action="store_true")
-    f.add_argument("--force", action="store_true", help="upload even if the image contains '!!!'")
     r = sub.add_parser("readback", help="dump flash + EEPROM to backups/")
     r.add_argument("--out", type=Path)
     k = sub.add_parser("pack", help="build the descriptor block HEX from the JSON")
     k.add_argument("--json", type=Path, default=DESCRIPTOR_JSON)
-    wd = sub.add_parser("write-descriptor", help="pack and flash the descriptor block (rewrites the app too: "
-                        "this bootloader needs one contiguous image), then read it back")
+    wd = sub.add_parser("write-descriptor", help="pack and write the descriptor block on its own, then read it back")
     wd.add_argument("--json", type=Path, default=DESCRIPTOR_JSON)
-    wd.add_argument("--app", type=Path, help="app HEX to write with it (default: read the current app back first)")
     sub.add_parser("check", help="runtime present? descriptor in flash matches the local JSON?")
 
     a = ap.parse_args(argv)
@@ -63,13 +60,13 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "watch":
             _out(board.watch(a.port, a.ms, a.seconds))
         elif a.cmd == "flash":
-            _out(program.flash(a.hex, a.port, backup=not a.no_backup, force=a.force))
+            _out(program.flash(a.hex, a.port, backup=not a.no_backup))
         elif a.cmd == "readback":
             _out(program.readback(a.port, a.out) if a.out else program.readback(a.port))
         elif a.cmd == "pack":
             _out(program.pack_descriptor(a.json))
         elif a.cmd == "write-descriptor":
-            _out(program.write_descriptor(a.port, a.json, a.app))
+            _out(program.write_descriptor(a.port, a.json))
         elif a.cmd == "check":
             _out(program.check_board(board.resolve_port(a.port), restore_descriptor=False))
     except (board.BoardError, ValueError, OSError) as e:

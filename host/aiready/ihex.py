@@ -72,7 +72,7 @@ def from_bytes(base: int, data: bytes) -> dict[int, int]:
 
 
 def contains_bang3(mem: dict[int, int]) -> list[int]:
-    """Addresses where the byte sequence '!!!' (0x21 x3) starts; it can hang this bootloader."""
+    """Addresses where the byte sequence '!!!' (0x21 x3) starts; it could hang the board's original stk500v2 bootloader (replaced by Optiboot)."""
     hits = []
     for a, b in mem.items():
         if b == 0x21 and mem.get(a + 1) == 0x21 and mem.get(a + 2) == 0x21:

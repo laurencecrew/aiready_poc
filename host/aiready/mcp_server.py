@@ -83,8 +83,8 @@ def clear_guard(port: str | None = None) -> dict:
 @mcp.tool()
 def flash(hex_path: str, backup: bool = True, port: str | None = None) -> dict:
     """Upload an application Intel HEX. Backs up current flash+EEPROM to backups/ first, strips the
-    descriptor and bootloader regions, refuses images containing '!!!', verifies, then reports whether
-    a runtime answers and the descriptor survived."""
+    descriptor and bootloader regions, verifies, then reports whether a runtime answers and the
+    descriptor survived."""
     return _call(program.flash, hex_path, port, backup=backup)
 
 

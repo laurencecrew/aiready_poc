@@ -52,8 +52,9 @@ static void printIdFields(const char *name, const char *ver) {
   kstr(F("ver"), ver); comma();
   kv(F("built")); Serial.print(F("\"" __DATE__ " " __TIME__ "\"")); comma();
   kstr(F("desc"), id); comma();
-  kv(F("desc_addr")); Serial.print(F("\"0x3A000\"")); comma();
+  kv(F("desc_addr")); Serial.print(F("\"0x3BC00\"")); comma();
   kstr(F("reset"), aiResetCause()); comma();
+  kv(F("mcusr")); Serial.print(aiResetFlags()); comma();
   kv(F("up_ms")); Serial.print(millis()); comma();
   kv(F("ram_free")); Serial.print(freeRam()); comma();
   // Bootstrap for an agent that has never seen this board: where the tools and docs are.
@@ -147,7 +148,7 @@ void AiReadyRuntime::cmdHelp() {
   Serial.println(F("{\"r\":\"help\",\"cmds\":[\"id\",\"desc <off> <len<=128>\",\"state\",\"watch <ms|0>\","
                    "\"pins\",\"peek <addr> <n<=32>\",\"safe\",\"clear\",\"reboot\",\"help\"],"
                    "\"protocol\":\"send '@ai <cmd>' + newline; each reply is one JSON line whose r field names the command\","
-                   "\"desc_format\":\"self-description = 8 KB block, read with desc <off> <len> (hex). Header 32 bytes little-endian: "
+                   "\"desc_format\":\"self-description = 16 KB block, read with desc <off> <len> (hex). Header 32 bytes little-endian: "
                    "0 jmp instruction (4), 4 magic AIRD (4), 8 format u16 =1, 10 compression u16 =1 zlib, "
                    "12 payload length u32, 16 JSON length u32, 20 CRC32 of payload u32, 24 id (8, first 8 bytes of SHA-256 of the JSON). "
                    "Payload from offset 32 = zlib stream of minified JSON. Python: json.loads(zlib.decompress(block[32:32+length]))\","
