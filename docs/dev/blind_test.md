@@ -11,7 +11,7 @@ Goal: a fresh agent, with no project docs, no CLAUDE.md and no memory of this pr
    Remove-Item -Recurse "$env:USERPROFILE\.aiready"     # cache + installed-mode backups
    ```
    Restore afterwards with `python -m pip install -e "host[mcp,test]"` from the repo.
-3. Test folder: `C:\Users\laure\aiready_blind_test\` (local disk, outside the repo, no CLAUDE.md, no `.mcp.json`). It contains only `TASK.md`.
+3. Test folder: `C:\Users\laure\Documents\aiready_blind_test\` (local disk, outside the repo, no CLAUDE.md, no `.mcp.json`). It contains only `TASK.md`.
 4. Start a new Claude Code session in that folder (e.g. a new VS Code window on it) and say: "Read TASK.md and do it."
 5. Be there to approve flashing and motor energising. Have X endstop leads ready to short to GND, and the thermistors on the X driver and motor.
 
