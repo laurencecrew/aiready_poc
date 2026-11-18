@@ -30,8 +30,8 @@ Pin numbers are **Arduino Mega 2560 pin numbers** unless noted. A C header with 
 | Thermistor inputs | 2: TEMP0 = A13, TEMP1/bed = A14 | [V] |
 | Limit-switch inputs | 6: X/Y/Z min & max, signal + GND (+5 V option via jumper/solder change). **Y on D40/D41, not RAMPS D14/D15** | [V] |
 | Display | 2.4" 128×64 mono, **ST7565/UC1701-family controller on hardware SPI** (CS D29, A0 D27, RST D25). **Not** the ST7920/RRD wiring. | [V] |
-| Input | Rotary encoder with push switch | [V] |
-| Beeper | On D37 (active buzzer: HIGH = sound) | [V] |
+| Input | Rotary encoder with push switch, **2 counts per detent** | [V] |
+| Beeper | On D37, **passive** buzzer: needs a 2–4 kHz square wave (corrected: was listed as active) | [V] |
 | microSD (TF) | Vertical slot on hardware SPI, SS D53, card-detect D49 | [R] |
 | I2C header | 4-pin: **SCL, SDA, GND, 5V** (left→right). External pull-ups present. | [V] pull-ups |
 | ESP-01 header | 2×4 ESP8266 module socket. UART **not identified yet** | [?] |
@@ -175,7 +175,7 @@ The store page mentions two extra fixed "FAN/LED" outputs; **none are present on
 | Encoder A (BTN_EN1) | 31 | PC6 | pulled-up, works [V] |
 | Encoder B (BTN_EN2) | 33 | PC4 | pulled-up, works [V] |
 | Encoder push (BTN_ENC) | 35 | PC2 | pulled-up, LOW = pressed [V] |
-| Beeper | 37 | PC0 | **[V]** works with probe `beep`. Drive HIGH = beep. No hardware PWM: don't use `tone()` |
+| Beeper | 37 | PC0 | **Passive [V]**: a steady HIGH only clicks (the original probe `beep` test mistook the click for a beep). Drive a square wave; 2000, 2700 and 4000 Hz all audible. PC0 has no hardware PWM and `tone()` takes Timer2, so the HAL toggles PC0 from a Timer3 CTC interrupt (`aiBeep`, `aiToneStart/Stop`) |
 | (RAMPS KILL) | 41 | PG0 | **Used as the Y-MAX endstop input on this board [V]**. There is no KILL button: the on-board button is RESET |
 | RESET button | MCU RESET pin | — | **[V]** reboots the MCU (hardware reset, not readable by firmware) |
 
@@ -205,6 +205,7 @@ The store page mentions two extra fixed "FAN/LED" outputs; **none are present on
 - **SPI bus is shared with the SD card**: deselect LCD (D29 HIGH) before SD access and SD (D53 HIGH) before LCD access. With U8g2 + SdFat, both libraries manage their own CS, but never call them from different ISRs/contexts concurrently.
 - D16, D17, D23 (the RRD/ST7920 nets) appear to be **unused** on this board, which frees UART2 (D16/D17) for other uses [?, verify nothing is attached].
 - **Encoder pins are on port C, which has no pin-change interrupts.** Poll them at ≥ 1 kHz (e.g. from a timer ISR).
+- **Encoder resolution: 2 quadrature transitions per detent [V]** (5 detents = 10 counts, blind test 2026-11-18). Which rotation direction counts up is not recorded [?].
 
 ### 3.6 microSD (TF card)
 

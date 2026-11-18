@@ -82,7 +82,8 @@
 #define BTN_EN1         31  // PC6 encoder A [V]
 #define BTN_EN2         33  // PC4 encoder B [V]
 #define BTN_ENC         35  // PC2 encoder push, LOW = pressed [V]
-#define BEEPER_PIN      37  // PC0 — HIGH = beep; not a PWM pin; tone() would steal Timer2 [V]
+#define ENC_COUNTS_PER_DETENT 2  // quadrature transitions per detent [V]
+#define BEEPER_PIN      37  // PC0 — PASSIVE buzzer: needs a 2-4 kHz square wave (HIGH only clicks); not a PWM pin; tone() would steal Timer2; use aiBeep() [V]
 // No KILL button on this board (the button is hardware RESET). D41 is the Y-MAX endstop.
 
 // ---------------- microSD (TF) on hardware SPI ---------------------------------

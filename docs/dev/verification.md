@@ -40,7 +40,7 @@ Do **not** feed that dump to avrdude directly any more: it covers 0x00000–0x3F
 | 16 | X and Z endstops | Probe `in`, S shorted to GND | **Confirmed by user**: X-MIN D3, X-MAX D2, Z-MIN D18, Z-MAX D19 |
 | 17 | TEMP1 | Thermistor on TEMP1, probe `temp` | **Confirmed by user**: TEMP1 = A14 |
 | 20 | Y endstops | `in` (Y-MAX), `watchall` (Y-MIN), S shorted to GND | **Y-MIN = D40, Y-MAX = D41** (port G). NOT RAMPS D14/D15 |
-| 21 | Beeper | `beep` | **Confirmed by user**: D37 beeps |
+| 21 | Beeper | `beep` | ~~Confirmed by user: D37 beeps~~ **Wrong: it only clicked.** Corrected by item 35 |
 | 22 | Stepper driver chip | User read marking | "4988ET" = **Allegro A4988** (SET package, 28-pin QFN) |
 | 23 | Microstepping | `step x 3200 …` with 200-step motor | **1/16**: 3200 steps = exactly 1 revolution |
 | 25 | Watchdog | probe `wdt` (WDTO_1S, then hang) | **Reboots after ~1 s, no boot-loop.** Banner shows MCUSR=0x0: the bootloader clears MCUSR, so reset cause is not visible to the application |
@@ -61,6 +61,10 @@ Do **not** feed that dump to avrdude directly any more: it covers 0x00000–0x3F
 | 32 | Runtime commands | `aiready state/pins/peek/safe/clear/watch`, unknown command, app line | All answer as specified; `peek` masks UDR0 as `xx` |
 | 33 | Flash + backup + restore | `aiready flash` (auto backup), restore of that backup | Backup 34 s, write + verify ~8 s; restore strips 0x3A000+ and trailing blanks, verifies |
 | 34 | MCP server | Tools called through the server: `describe`, `get_state` | Same JSON as the CLI; descriptor served from cache keyed by the on-board id |
+
+| 35 | Beeper type | Blind test: steady HIGH vs square waves at 2000/2700/4000 Hz | **Passive buzzer**: HIGH only clicks; all three tones audible. Description, HAL (`aiBeep` via Timer3) and pin header corrected |
+| 36 | Encoder resolution | Blind test: 5 detents turned by user | **2 counts per detent** (HAL guessed 4). `AI_ENC_STEPS_PER_DETENT` = 2 |
+| 37 | Blind self-description test | Fresh agent with only the board + tools ([blind_test.md](blind_test.md)) | Built and flashed a working X jog app; found the buzzer and encoder errors. See blind_test.md for scores and gaps |
 
 Notes:
 - `-D` uploads never erase above the image, so readbacks contain **stale pages from older, larger firmware** (e.g. 101 KB "used" after a 15 KB lcdtest over Marlin). `app_sha` in backups covers those stale bytes too.

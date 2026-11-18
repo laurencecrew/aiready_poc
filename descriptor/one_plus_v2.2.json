@@ -95,7 +95,7 @@
     {"pin": 31, "name": "ENC_A", "port": "PC6", "dir": "in", "note": "external pull-up; port C has no interrupts, poll >=1 kHz", "s": "V"},
     {"pin": 33, "name": "ENC_B", "port": "PC4", "dir": "in", "s": "V"},
     {"pin": 35, "name": "ENC_BTN", "port": "PC2", "dir": "in", "active": "low", "s": "V"},
-    {"pin": 37, "name": "BEEPER", "port": "PC0", "dir": "out", "note": "active buzzer, HIGH = sound; no PWM; never tone()", "s": "V"},
+    {"pin": 37, "name": "BEEPER", "port": "PC0", "dir": "out", "note": "PASSIVE buzzer: needs a 2-4 kHz square wave, steady HIGH only clicks; never tone()", "s": "V"},
     {"pin": 50, "name": "SPI_MISO", "port": "PB3", "alt": "PCINT3", "dir": "in", "s": "R"},
     {"pin": 51, "name": "SPI_MOSI", "port": "PB2", "alt": "PCINT2", "dir": "out", "note": "shared LCD + SD", "s": "V"},
     {"pin": 52, "name": "SPI_SCK", "port": "PB1", "alt": "PCINT1", "dir": "out", "note": "shared LCD + SD", "s": "V"},
@@ -139,7 +139,7 @@
     },
     "endstops": {
       "count": 6, "names": ["X_MIN", "X_MAX", "Y_MIN", "Y_MAX", "Z_MIN", "Z_MAX"],
-      "connector": "S + GND (+5 V needs jumper/solder change for optical)",
+      "connector": "S + GND (+5 V needs jumper/solder change for optical)", "switch_type": "NO to GND assumed; NC would read always triggered", "switch_type_s": "?",
       "pullups": "external on all six", "triggered_level": "LOW for NO switch to GND",
       "interrupts": {"X_MIN": "INT5", "X_MAX": "INT4", "Z_MIN": "INT3", "Z_MAX": "INT2", "Y_MIN": "none (poll)", "Y_MAX": "none (poll)"},
       "reuse": "X and Z inputs suit counters, encoders, tachometers (hardware INT)",
@@ -190,8 +190,8 @@
       },
       "s": "V"
     },
-    "encoder": {"type": "rotary encoder with push switch", "pins": {"a": 31, "b": 33, "push": 35}, "interrupts": "none (port C): poll >=1 kHz", "hal": "AiEncoder (TIMER0_COMPA ISR at ~1 kHz)", "s": "V"},
-    "beeper": {"pin": 37, "type": "active buzzer, HIGH = sound", "hal": "aiBeep(ms)", "s": "V"},
+    "encoder": {"type": "rotary encoder with push switch", "counts_per_detent": 2, "counts_s": "V", "direction_s": "?", "pins": {"a": 31, "b": 33, "push": 35}, "interrupts": "none (port C): poll >=1 kHz", "hal": "AiEncoder (TIMER0_COMPA ISR at ~1 kHz)", "s": "V"},
+    "beeper": {"pin": 37, "type": "passive buzzer (corrected 2026-11-18; earlier tagged active)", "drive": "square wave 2-4 kHz; 2000/2700/4000 Hz audible; loudest unknown", "hal": "aiBeep(ms, hz=2700), aiToneStart(hz)/aiToneStop(): Timer3 CTC ISR toggles PC0", "s": "V"},
     "reset_button": {"type": "hardware MCU RESET, not readable", "note": "there is no KILL button", "s": "V"},
     "sd_card": {"type": "microSD (TF) vertical slot", "bus": "hardware SPI", "cs": 53, "detect": 49, "level_shifting": "unknown", "s": "R"},
     "i2c": {"header_order": "SCL, SDA, GND, 5V (left to right)", "pins": {"sda": 20, "scl": 21}, "pullups": "external, value unknown", "logic": "5 V", "onboard_devices": "none", "s": "V"},
@@ -212,7 +212,7 @@
       {"id": "Timer0", "bits": 8, "use": "millis/delay; COMPA used by aiready encoder poll", "pins": "D4 OC0B, D13 OC0A", "rule": "leave alone"},
       {"id": "Timer1", "bits": 16, "use": "free", "pins": "D11, D12, D13", "rule": "recommended for motion/step ISR"},
       {"id": "Timer2", "bits": 8, "use": "heater/fan PWM", "pins": "D9, D10", "rule": "never tone()"},
-      {"id": "Timer3", "bits": 16, "use": "free", "pins": "D2, D3, D5"},
+      {"id": "Timer3", "bits": 16, "use": "aiready beeper while sounding, else free", "pins": "D2, D3, D5"},
       {"id": "Timer4", "bits": 16, "use": "bed PWM", "pins": "D6, D7, D8"},
       {"id": "Timer5", "bits": 16, "use": "free (Servo lib uses it)", "pins": "D44, D45, D46 Z_STEP", "rule": "can generate Z steps in hardware"}
     ],
@@ -245,7 +245,8 @@
     {"id": "S5", "rule": "No tone(): it takes Timer2 (heater/fan PWM)."},
     {"id": "S6", "rule": "Never write flash at or above 0x3A000 from an app (descriptor, NOP fill, bootloader). Keep app code below 0x20000."},
     {"id": "S7", "rule": "Avoid the byte sequence '!!!' in firmware images."},
-    {"id": "S8", "rule": "Keep the X thermal guard enabled while X is energised (profile cnc-poc-1)."}
+    {"id": "S8", "rule": "Keep the X thermal guard enabled while X is energised (profile cnc-poc-1)."},
+    {"id": "S9", "rule": "Before any motion command check state.drivers_enabled: a driver may already be energised (by the user or another tool)."}
   ],
   "unknowns": [
     "Which trimpot sets X current (shared with Y?) and present Vref values",
@@ -253,7 +254,9 @@
     "What D4, D6, D7 connect to",
     "D13 LED presence",
     "MOSFET and fuse ratings; 5 V regulator capacity",
-    "Thermistor model (B value) - assumed 100k B3950"
+    "Thermistor model (B value) - assumed 100k B3950",
+    "Which DIR level moves each axis toward its MIN endstop",
+    "Possible TEMP0/TEMP1 crosstalk: TEMP1 varied 26-30 C while TEMP0 was open"
   ],
   "hal": {
     "library": "firmware/lib/aiready (PlatformIO: lib_extra_dirs = ../lib, build_flags = -I../include)",
@@ -267,7 +270,7 @@
       "aiEndstop(i) / aiEndstopMask()  - debounced, 1 = triggered",
       "AiEncoder::begin(), position(), button()  - polled at 1 kHz",
       "aiStepperEnable(axis, on), aiStepperMove(axis, steps, steps_per_s, stop_on_endstop)  - blocking; refuses X while guard tripped",
-      "aiBeep(ms)",
+      "aiBeep(ms, hz=2700), aiToneStart(hz), aiToneStop()  - passive buzzer via Timer3",
       "aiDisplayBegin(u8g2)  - aiready_display.h, needs olikraus/U8g2 in lib_deps",
       "aiGuardTripped(), aiGuardClear(), aiGuardEnable(bool)"
     ],

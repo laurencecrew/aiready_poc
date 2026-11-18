@@ -13,7 +13,7 @@ ATmega2560 3D-printer all-in-one board (RAMPS 1.4 compatible) being repurposed f
 - Any heater control must include thermistor open/short detection and a thermal-runaway / max-on-time cutoff.
 - Display is **ST7565 on hardware SPI (CS 29, A0 27, RST 25)**, not the RAMPS ST7920 wiring. SPI is shared with the SD card (CS 53). U8g2: `U8G2_ST7565_ZOLEN_128X64_*_4W_HW_SPI(U8G2_R0, 29, 27, 25)`, then after **every** `begin()`: `sendF("c", 0xA0)`, `getU8x8()->x_offset = 0`, `setContrast(56)`. Without the 0xA0 the image is mirrored and wraps. See docs/dev/hardware.md §3.5.
 - **Y endstops are D40 (Y-MIN) / D41 (Y-MAX), not RAMPS D14/D15.** Port G has no interrupts: poll them. There is no KILL button (the button is hardware RESET).
-- Don't use `tone()` (steals Timer2 = heater/fan PWM). Encoder (D31/33/35) has no pin-change interrupt: poll it.
+- Don't use `tone()` (steals Timer2 = heater/fan PWM). The beeper (D37) is **passive**: use `aiBeep()` (Timer3 square wave), a steady HIGH only clicks. Encoder (D31/33/35) has no pin-change interrupt: poll it; 2 counts per detent.
 - Do not drive D4, D6 or D7 HIGH until identified (they have external loads).
 - Watchdog is safe to use (no boot-loop), but the bootloader clears MCUSR: don't rely on it for reset cause (use a `.noinit` magic value).
 - Avoid the string `!!!` in firmware images (old STK500v2 bootloader quirk).

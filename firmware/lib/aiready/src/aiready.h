@@ -74,7 +74,7 @@ bool aiEndstop(AiEndstop e);   // true = triggered (input LOW)
 uint8_t aiEndstopMask();       // bit n = AiEndstop n triggered
 
 #ifndef AI_ENC_STEPS_PER_DETENT
-#define AI_ENC_STEPS_PER_DETENT 4   // [?] typical; check the 'raw' value in @ai state
+#define AI_ENC_STEPS_PER_DETENT 2   // [V] measured: 5 detents = 10 transitions (2026-11-18)
 #endif
 namespace AiEncoder {
   long raw();                  // quadrature transitions
@@ -96,7 +96,16 @@ bool aiStepperEnabled(AiAxis a);
 long aiStepperMove(AiAxis a, long steps, uint16_t steps_per_s, bool stop_on_endstop = true);
 
 // ---------------------------------------------------------------- beeper
-void aiBeep(uint16_t ms);      // blocking, GPIO only (never tone())
+// PASSIVE buzzer on D37 [V]: a steady HIGH only clicks; it needs a square wave.
+// Generated with Timer3 (CTC interrupt toggling PC0) only while sounding, so Timer1
+// (motion) and Timer2 (heater/fan PWM) are untouched. Never use tone() (takes Timer2).
+// While a tone plays, Timer3 is owned by the beeper; apps using Timer3 must not beep.
+#ifndef AI_BEEP_HZ
+#define AI_BEEP_HZ 2700        // 2000, 2700 and 4000 Hz all audible [V]; loudest not determined
+#endif
+void aiToneStart(uint16_t hz = AI_BEEP_HZ);   // non-blocking, 31..20000 Hz
+void aiToneStop();
+void aiBeep(uint16_t ms, uint16_t hz = AI_BEEP_HZ);   // blocking
 
 // ---------------------------------------------------------------- runtime
 typedef void (*AiLineHandler)(char *line);

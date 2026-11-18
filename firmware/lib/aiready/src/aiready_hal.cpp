@@ -23,7 +23,8 @@ void aiSafeOutputs() {
   for (uint8_t p : pw) { digitalWrite(p, LOW); pinMode(p, OUTPUT); }
   const uint8_t en[] = {X_ENABLE_PIN, Y_ENABLE_PIN, Z_ENABLE_PIN, E0_ENABLE_PIN};
   for (uint8_t p : en) { digitalWrite(p, HIGH); pinMode(p, OUTPUT); }   // HIGH = disabled
-  digitalWrite(BEEPER_PIN, LOW); pinMode(BEEPER_PIN, OUTPUT);
+  aiToneStop();                                  // passive buzzer: stop Timer3 tone, pin LOW
+  pinMode(BEEPER_PIN, OUTPUT);
 }
 
 void aiSafeInit() {
@@ -215,9 +216,32 @@ long aiStepperMove(AiAxis a, long steps, uint16_t sps, bool stop_on_endstop) {
   return fwd ? done : -done;
 }
 
-// ================================================================= beeper
-void aiBeep(uint16_t ms) {
-  digitalWrite(BEEPER_PIN, HIGH);
+// ================================================================= beeper (passive)
+static volatile bool tone_on = false;
+
+ISR(TIMER3_COMPA_vect) { if (tone_on) PINC = _BV(0); }   // writing PINC toggles PC0 = D37
+
+void aiToneStart(uint16_t hz) {
+  if (hz < 31) hz = 31;              // OCR3A is 16-bit at 2 MHz
+  if (hz > 20000) hz = 20000;
+  TIMSK3 &= ~_BV(OCIE3A);
+  TCCR3A = 0;
+  TCCR3B = _BV(WGM32) | _BV(CS31);   // CTC, clk/8 = 2 MHz
+  OCR3A = (uint16_t)(1000000UL / hz) - 1;   // toggle at 2*hz
+  TCNT3 = 0;
+  tone_on = true;
+  TIMSK3 |= _BV(OCIE3A);
+}
+
+void aiToneStop() {
+  TIMSK3 &= ~_BV(OCIE3A);
+  tone_on = false;
+  TCCR3B = 0;                        // stop Timer3
+  digitalWrite(BEEPER_PIN, LOW);     // no DC through the buzzer coil
+}
+
+void aiBeep(uint16_t ms, uint16_t hz) {
+  aiToneStart(hz);
   delay(ms);
-  digitalWrite(BEEPER_PIN, LOW);
+  aiToneStop();
 }
